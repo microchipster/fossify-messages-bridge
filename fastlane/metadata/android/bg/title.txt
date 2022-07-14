@@ -1,1 +1,1 @@
-Обикновени SMS Съобщения
+Simple SMS Messenger
