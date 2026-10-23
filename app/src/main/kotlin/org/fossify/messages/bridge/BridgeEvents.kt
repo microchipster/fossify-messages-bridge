@@ -14,6 +14,13 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 
+/** Error detail of a `send.result` event, mirroring the agent API error object. */
+@Serializable
+data class BridgeEventError(
+    val code: String = "",
+    val message: String = "",
+)
+
 /** One incremental change notification, mirroring the agent API event object. */
 @Serializable
 data class BridgeEvent(
@@ -28,6 +35,9 @@ data class BridgeEvent(
     @SerialName("has_attachment") val hasAttachment: Boolean,
     val preview: String = "",
     @SerialName("send_id") val sendId: String = "",
+    @SerialName("parts_sent") val partsSent: Int = 0,
+    val pending: Boolean = false,
+    val error: BridgeEventError? = null,
 )
 
 /** GET /v1/events response envelope. */
@@ -48,6 +58,7 @@ data class BridgeEventsPage(
 object BridgeEvents {
     const val TYPE_MESSAGE_NEW = "message.new"
     const val TYPE_MESSAGE_UPDATED = "message.updated"
+    const val TYPE_THREAD_UPDATED = "thread.updated"
 
     private const val TAG = "BridgeEvents"
     private const val MAX_EVENTS = 10000
@@ -136,7 +147,7 @@ object BridgeEvents {
         timestampMs: Long,
     ) {
         try {
-            if (rowId <= 0 || !BridgeConfig.newInstance(context).bridgeEnabled) {
+            if (rowId <= 0 || !BridgeConfig.newInstance(context).isActive()) {
                 return
             }
             append(
@@ -172,7 +183,7 @@ object BridgeEvents {
         timestampMs: Long,
     ) {
         try {
-            if (rowId <= 0 || !BridgeConfig.newInstance(context).bridgeEnabled) {
+            if (rowId <= 0 || !BridgeConfig.newInstance(context).isActive()) {
                 return
             }
             append(
@@ -207,7 +218,7 @@ object BridgeEvents {
         timestampMs: Long = System.currentTimeMillis(),
     ) {
         try {
-            if (!BridgeConfig.newInstance(context).bridgeEnabled) {
+            if (!BridgeConfig.newInstance(context).isActive()) {
                 return
             }
             append(

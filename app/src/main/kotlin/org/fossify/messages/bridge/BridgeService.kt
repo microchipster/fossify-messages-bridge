@@ -39,10 +39,16 @@ class BridgeService : Service() {
         private const val TAG = "BridgeService"
         private const val NOTIFICATION_ID = 8391
 
-        /** Starts or stops the service according to the current preference. */
+        /**
+         * Starts or stops the service according to the current preferences.
+         *
+         * It runs when the static-token agent mode is enabled (`bridge_enabled`)
+         * and/or when this phone is paired with a Matrix bridge (a stored device
+         * token), because the pairing poller needs the same foreground service.
+         */
         fun maybeStart(context: Context) {
             try {
-                if (BridgeConfig.newInstance(context).bridgeEnabled) {
+                if (BridgeConfig.newInstance(context).isActive()) {
                     start(context)
                 } else {
                     stop(context)
@@ -70,21 +76,24 @@ class BridgeService : Service() {
     }
 
     private var server: BridgeServer? = null
+    private var poller: PairingPoller? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val config = BridgeConfig.newInstance(this)
-        if (!config.bridgeEnabled) {
+        val bridgeEnabled = config.bridgeEnabled
+        val paired = PairingStore.newInstance(this).isPaired
+        if (!bridgeEnabled && !paired) {
             stopSelf()
             return START_NOT_STICKY
         }
 
         val port = config.bridgePort.coerceIn(1024, 65535)
         val token = config.getOrCreateToken()
-        startAsForeground(port)
+        startAsForeground(port, bridgeEnabled)
 
-        if (server == null) {
+        if (bridgeEnabled && server == null) {
             val newServer = BridgeServer(this, token, port)
             try {
                 newServer.start()
@@ -95,16 +104,27 @@ class BridgeService : Service() {
             }
         }
 
+        if (paired && poller == null) {
+            poller = PairingPoller(this).also { it.start() }
+        } else if (!paired && poller != null) {
+            // Unpaired while the service was running: the poller loops exit on
+            // their own, but drop the instance so a later pairing starts fresh.
+            poller?.stop()
+            poller = null
+        }
+
         return START_STICKY
     }
 
     override fun onDestroy() {
+        poller?.stop()
+        poller = null
         server?.stop()
         server = null
         super.onDestroy()
     }
 
-    private fun startAsForeground(port: Int) {
+    private fun startAsForeground(port: Int, bridgeEnabled: Boolean) {
         val notificationManager = getSystemService(NotificationManager::class.java) ?: return
         ensureNotificationChannel(notificationManager)
 
@@ -115,10 +135,17 @@ class BridgeService : Service() {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
+        val text = if (bridgeEnabled) {
+            getString(R.string.bridge_service_text, port)
+        } else {
+            val user = PairingStore.newInstance(this).pairedUser
+                .ifEmpty { getString(R.string.bridge_service_paired_text_unknown) }
+            getString(R.string.bridge_service_paired_text, user)
+        }
         val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_messenger)
             .setContentTitle(getString(R.string.bridge_service_title))
-            .setContentText(getString(R.string.bridge_service_text, port))
+            .setContentText(text)
             .setContentIntent(pendingIntent)
             .setOngoing(true)
             .setSilent(true)

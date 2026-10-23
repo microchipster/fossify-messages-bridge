@@ -54,6 +54,14 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
         get() = prefs.getString(BRIDGE_DEVICE_ID, "").orEmpty()
         set(id) = prefs.edit().putString(BRIDGE_DEVICE_ID, id).apply()
 
+    /**
+     * True while some bridge transport is active: the static-token agent mode
+     * (`bridge_enabled`) or a paired device (a stored pairing token).
+     */
+    fun isActive(): Boolean {
+        return bridgeEnabled || PairingStore.newInstance(context).isPaired
+    }
+
     /** Returns the stored bearer token, generating and persisting a 32 hex char token on first use. */
     @Synchronized
     fun getOrCreateToken(): String {
