@@ -18,7 +18,6 @@ eventbus = "3.3.1"
 room = "2.8.5"
 #Fossify
 commons = "7.1.3"
-mmslib = "1.0.1"
 indicator-fast-scroll = "4524cd0b61"
 #Gradle
 gradlePlugins-agp = "9.4.1"
@@ -45,7 +44,6 @@ compose-detekt = { module = "io.nlopez.compose.rules:detekt", version.ref = "det
 #Fossify
 fossify-commons = { module = "org.fossify:commons", version.ref = "commons" }
 indicator-fast-scroll = { module = "org.fossify:IndicatorFastScroll", version.ref = "indicator-fast-scroll" }
-mmslib = { module = "org.fossify:mmslib", version.ref = "mmslib" }
 #EventBus
 eventbus = { module = "org.greenrobot:eventbus", version.ref = "eventbus" }
 #Helpers
