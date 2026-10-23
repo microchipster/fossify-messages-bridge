@@ -1,0 +1,242 @@
+/*
+ * SPDX-FileCopyrightText: 2026 microchipster
+ *
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+package org.fossify.messages.bridge
+
+import android.content.Context
+import android.util.Log
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
+
+/** One incremental change notification, mirroring the agent API event object. */
+@Serializable
+data class BridgeEvent(
+    val seq: Long = 0,
+    val type: String,
+    @SerialName("message_id") val messageId: String = "",
+    @SerialName("thread_id") val threadId: Long,
+    @SerialName("sub_id") val subId: Int,
+    @SerialName("timestamp_ms") val timestampMs: Long,
+    val sender: String = "",
+    @SerialName("is_mms") val isMms: Boolean,
+    @SerialName("has_attachment") val hasAttachment: Boolean,
+    val preview: String = "",
+    @SerialName("send_id") val sendId: String = "",
+)
+
+/** GET /v1/events response envelope. */
+@Serializable
+data class BridgeEventsPage(
+    val reset: Boolean,
+    val cursor: Long,
+    val events: List<BridgeEvent>,
+)
+
+/**
+ * In-memory ring buffer of receive/send events with long-poll support.
+ *
+ * The bridge polls this feed and falls back to a full history catch-up
+ * whenever it receives `reset = true` (cursor fell out of the retained
+ * window).
+ */
+object BridgeEvents {
+    const val TYPE_MESSAGE_NEW = "message.new"
+    const val TYPE_MESSAGE_UPDATED = "message.updated"
+
+    private const val TAG = "BridgeEvents"
+    private const val MAX_EVENTS = 10000
+    private const val MAX_PREVIEW_LENGTH = 120
+
+    private val lock = ReentrantLock()
+    private val hasEvents = lock.newCondition()
+    private val buffer = ArrayDeque<BridgeEvent>()
+    private var sequence = 0L
+
+    /** Formats a wire message id: `sms:<sub_id>:<row_id>` / `mms:<sub_id>:<row_id>`. */
+    fun messageId(kind: String, subId: Int, rowId: Long): String {
+        return "$kind:$subId:$rowId"
+    }
+
+    /** Splits a wire message id, returning null when it is malformed. */
+    fun parseMessageId(messageId: String): Triple<String, Int, Long>? {
+        val parts = messageId.split(":")
+        if (parts.size != 3) {
+            return null
+        }
+        val kind = parts[0]
+        if (kind != "sms" && kind != "mms") {
+            return null
+        }
+        val subId = parts[1].toIntOrNull() ?: return null
+        val rowId = parts[2].toLongOrNull() ?: return null
+        return Triple(kind, subId, rowId)
+    }
+
+    fun cursor(): Long = lock.withLock { sequence }
+
+    fun append(event: BridgeEvent) {
+        lock.withLock {
+            sequence += 1
+            buffer.addLast(event.copy(seq = sequence))
+            while (buffer.size > MAX_EVENTS) {
+                buffer.removeFirst()
+            }
+            hasEvents.signalAll()
+        }
+    }
+
+    /** Long-polls until an event newer than [since] exists or [timeoutMs] elapses. */
+    fun wait(since: Long, timeoutMs: Long): BridgeEventsPage {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        lock.withLock {
+            while (true) {
+                val page = sinceLocked(since)
+                if (page.events.isNotEmpty() || page.reset) {
+                    return page
+                }
+                val remaining = deadline - System.currentTimeMillis()
+                if (remaining <= 0) {
+                    return page
+                }
+                try {
+                    hasEvents.await(remaining, TimeUnit.MILLISECONDS)
+                } catch (_: InterruptedException) {
+                    return BridgeEventsPage(reset = false, cursor = sequence, events = emptyList())
+                }
+            }
+        }
+    }
+
+    private fun sinceLocked(since: Long): BridgeEventsPage {
+        val cursor = sequence
+        if (buffer.isNotEmpty() && since < buffer.first().seq - 1) {
+            return BridgeEventsPage(reset = true, cursor = cursor, events = emptyList())
+        }
+        val events = buffer.filter { it.seq > since }
+        return BridgeEventsPage(reset = false, cursor = cursor, events = events)
+    }
+
+    /**
+     * Called by [org.fossify.messages.receivers.SmsReceiver] after a new SMS
+     * has been persisted. Never throws.
+     */
+    fun onSmsReceived(
+        context: Context,
+        rowId: Long,
+        threadId: Long,
+        subId: Int,
+        sender: String,
+        body: String,
+        timestampMs: Long,
+    ) {
+        try {
+            if (rowId <= 0 || !BridgeConfig.newInstance(context).bridgeEnabled) {
+                return
+            }
+            append(
+                BridgeEvent(
+                    type = TYPE_MESSAGE_NEW,
+                    messageId = messageId("sms", normalizeSubId(subId), rowId),
+                    threadId = threadId,
+                    subId = normalizeSubId(subId),
+                    timestampMs = timestampMs,
+                    sender = sender,
+                    isMms = false,
+                    hasAttachment = false,
+                    preview = preview(body),
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "failed to emit SMS event", e)
+        }
+    }
+
+    /**
+     * Called by [org.fossify.messages.receivers.MmsReceiver] after a downloaded
+     * MMS has been persisted. Never throws.
+     */
+    fun onMmsReceived(
+        context: Context,
+        rowId: Long,
+        threadId: Long,
+        subId: Int,
+        sender: String,
+        body: String,
+        hasAttachment: Boolean,
+        timestampMs: Long,
+    ) {
+        try {
+            if (rowId <= 0 || !BridgeConfig.newInstance(context).bridgeEnabled) {
+                return
+            }
+            append(
+                BridgeEvent(
+                    type = TYPE_MESSAGE_NEW,
+                    messageId = messageId("mms", normalizeSubId(subId), rowId),
+                    threadId = threadId,
+                    subId = normalizeSubId(subId),
+                    timestampMs = timestampMs,
+                    sender = sender,
+                    isMms = true,
+                    hasAttachment = hasAttachment,
+                    preview = preview(body),
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "failed to emit MMS event", e)
+        }
+    }
+
+    /** Emits an event for a message sent through POST /v1/send (carries the client [sendId]). */
+    fun onMessageSent(
+        context: Context,
+        kind: String,
+        rowId: Long,
+        threadId: Long,
+        subId: Int,
+        body: String,
+        isMms: Boolean,
+        hasAttachment: Boolean,
+        sendId: String,
+        timestampMs: Long = System.currentTimeMillis(),
+    ) {
+        try {
+            if (!BridgeConfig.newInstance(context).bridgeEnabled) {
+                return
+            }
+            append(
+                BridgeEvent(
+                    type = TYPE_MESSAGE_NEW,
+                    messageId = if (rowId > 0) messageId(kind, normalizeSubId(subId), rowId) else "",
+                    threadId = threadId,
+                    subId = normalizeSubId(subId),
+                    timestampMs = timestampMs,
+                    sender = "",
+                    isMms = isMms,
+                    hasAttachment = hasAttachment,
+                    preview = preview(body),
+                    sendId = sendId,
+                )
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "failed to emit sent event", e)
+        }
+    }
+
+    fun normalizeSubId(subId: Int) = if (subId < 0) -1 else subId
+
+    private fun preview(body: String): String {
+        val singleLine = body.replace('\n', ' ').trim()
+        return if (singleLine.length > MAX_PREVIEW_LENGTH) {
+            singleLine.take(MAX_PREVIEW_LENGTH)
+        } else {
+            singleLine
+        }
+    }
+}

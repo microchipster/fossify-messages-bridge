@@ -4,6 +4,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import org.fossify.commons.helpers.ensureBackgroundThread
+import org.fossify.messages.bridge.BridgeService
 import org.fossify.messages.extensions.rescheduleAllScheduledMessages
 
 /**
@@ -13,6 +14,7 @@ class RescheduleAlarmsReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val pendingResult = goAsync()
         ensureBackgroundThread {
+            BridgeService.maybeStart(context)
             context.rescheduleAllScheduledMessages()
             pendingResult.finish()
         }
