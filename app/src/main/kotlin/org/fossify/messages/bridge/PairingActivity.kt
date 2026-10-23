@@ -7,6 +7,7 @@
 package org.fossify.messages.bridge
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -30,12 +31,20 @@ import org.fossify.messages.databinding.ActivityPairingBinding
  * bot (or paste the payload), or type the homeserver URL, the optional bridge
  * URL and the one-time pairing code.
  *
- * The activity is not exported; it is reachable from the app settings (and
- * from adb on debuggable builds through `run-as`).
+ * The activity is exported only for the `smsmms://pair` deep link: scanning
+ * the QR code with any camera app opens it directly and starts pairing. It is
+ * otherwise reachable from the app settings (and from adb on debuggable
+ * builds through `run-as`).
  */
+// Cohesive pairing screen: UI setup, QR/manual flows and lifecycle glue in one activity.
+@Suppress("TooManyFunctions")
 class PairingActivity : SimpleActivity() {
     companion object {
         private const val TAG = "PairingActivity"
+
+        /** Optional intent extras for scripted/system launches (adb, tests). */
+        const val EXTRA_PAYLOAD = "payload"
+        const val EXTRA_DEVICE_ID = "device_id"
     }
 
     private val binding by viewBinding(ActivityPairingBinding::inflate)
@@ -75,6 +84,32 @@ class PairingActivity : SimpleActivity() {
         }
         binding.pairingPair.setOnClickListener { startPairing() }
         binding.pairingUnpair.setOnClickListener { unpair() }
+
+        binding.pairingDeviceId.setText(PairingClient.deviceId(this))
+        handleLaunchIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleLaunchIntent(intent)
+    }
+
+    /**
+     * Supports launching the pairing screen from a `smsmms://pair?...` link
+     * (deep link, QR payload or `adb shell am start -d ...`) as well as the
+     * `payload` / `device_id` string extras used for scripted pairing.
+     */
+    private fun handleLaunchIntent(intent: Intent?) {
+        val deviceId = intent?.getStringExtra(EXTRA_DEVICE_ID)
+        if (!deviceId.isNullOrBlank()) {
+            binding.pairingDeviceId.setText(deviceId)
+        }
+        val payload = intent?.getStringExtra(EXTRA_PAYLOAD) ?: intent?.data?.toString()
+        if (!payload.isNullOrBlank() && payload.startsWith("smsmms://")) {
+            binding.pairingPayload.setText(payload)
+            usePayload(payload)
+        }
     }
 
     override fun onResume() {
@@ -139,6 +174,10 @@ class PairingActivity : SimpleActivity() {
         val homeserverUrl = binding.pairingHomeserverUrl.text?.toString().orEmpty().trim()
         val bridgeUrl = binding.pairingBridgeUrl.text?.toString().orEmpty().trim()
         val code = binding.pairingCode.text?.toString().orEmpty().trim()
+        val deviceId = binding.pairingDeviceId.text?.toString().orEmpty().trim()
+        if (deviceId.isNotEmpty()) {
+            BridgeConfig.newInstance(this).bridgeDeviceId = deviceId
+        }
         if (code.isEmpty()) {
             toast(R.string.bridge_pairing_missing_code)
             return

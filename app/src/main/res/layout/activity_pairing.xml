@@ -125,6 +125,24 @@
 
             </org.fossify.commons.views.MyTextInputLayout>
 
+            <org.fossify.commons.views.MyTextInputLayout
+                android:id="@+id/pairing_device_id_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/bridge_pairing_device_id"
+                app:helperText="@string/bridge_pairing_device_id_helper"
+                app:helperTextEnabled="true">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/pairing_device_id"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:maxLines="1"
+                    android:textCursorDrawable="@null" />
+
+            </org.fossify.commons.views.MyTextInputLayout>
+
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/pairing_pair"
                 android:layout_width="match_parent"
