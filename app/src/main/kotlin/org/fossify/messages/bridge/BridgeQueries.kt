@@ -6,8 +6,11 @@
 
 package org.fossify.messages.bridge
 
+import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
+import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Build
@@ -15,7 +18,9 @@ import android.provider.Settings
 import android.provider.Telephony.Mms
 import android.provider.Telephony.Sms
 import android.provider.Telephony.Threads
+import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
+import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.google.android.mms.pdu_alt.PduHeaders
 import kotlinx.serialization.SerialName
@@ -258,17 +263,7 @@ object BridgeQueries {
     }
 
     fun subscriptions(context: Context): List<BridgeSubscription> {
-        val manager = try {
-            context.getSystemService(SubscriptionManager::class.java)
-        } catch (_: Exception) {
-            null
-        }
-
-        val infos = try {
-            manager?.activeSubscriptionInfoList
-        } catch (_: Exception) {
-            null
-        }
+        val infos = activeSubscriptionInfos(context)
 
         if (infos != null) {
             val defaultSubId = try {
@@ -313,6 +308,23 @@ object BridgeQueries {
         } catch (_: Exception) {
         }
         return subscriptions.sortedBy { it.subId }
+    }
+
+    /**
+     * The active subscriptions, or null when the list is not accessible (missing READ_PHONE_STATE
+     * or a provider failure), in which case callers fall back to the raw siminfo table.
+     */
+    private fun activeSubscriptionInfos(context: Context): List<SubscriptionInfo>? {
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return null
+        }
+        return try {
+            context.getSystemService(SubscriptionManager::class.java)?.activeSubscriptionInfoList
+        } catch (_: Exception) {
+            null
+        }
     }
 
     fun threads(context: Context): List<BridgeThread> {
@@ -903,7 +915,7 @@ object BridgeQueries {
         }
 
         val serial = try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Build.getSerial() else Build.SERIAL
+            hardwareSerial(context)
         } catch (_: Exception) {
             Build.SERIAL
         }
@@ -916,5 +928,19 @@ object BridgeQueries {
         } catch (_: Exception) {
             ""
         }
+    }
+
+    /**
+     * Best-effort hardware serial. [Build.getSerial] is annotated with the signature-level
+     * READ_PRIVILEGED_PHONE_STATE from API 30 on, which a normal app can never hold; on the API
+     * levels where it is readable (26-29) READ_PHONE_STATE is checked first.
+     */
+    // Lint demands the signature-level READ_PRIVILEGED_PHONE_STATE; the API 26-29 path is guarded below.
+    @SuppressLint("MissingPermission")
+    private fun hardwareSerial(context: Context): String {
+        val canReadSerial = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) ==
+            PackageManager.PERMISSION_GRANTED
+        return if (canReadSerial) Build.getSerial() else Build.SERIAL
     }
 }
