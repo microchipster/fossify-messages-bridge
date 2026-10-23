@@ -1,3 +1,9 @@
+<!--
+SPDX-FileCopyrightText: 2026 microchipster
+
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+
 # Bridge mode
 
 Bridge mode turns the app into a local HTTP server that exposes the full SMS/MMS
@@ -89,15 +95,23 @@ curl -H 'Authorization: Bearer <token>' http://<phone-ip>:8391/v1/threads
 | `POST /v1/read` | Mark a thread (`thread_id`/`up_to_ms`) or messages (`message_ids`) read |
 | `POST /v1/send` | Send SMS or MMS (base64 attachments, multi-recipient group MMS) |
 | `GET /v1/contacts` | Not implemented (returns `501 unsupported`) |
+| `OPTIONS *` | Preflight helper (returns `204`, no auth) |
 
 `POST /v1/send` builds a single MMS carrying every attachment and forces group
 MMS for multi-recipient sends. SMS is used only for a single recipient without
 attachments (long messages go out as MMS only when "send long messages as MMS"
-is enabled in the app settings).
+is enabled in the app settings). Error responses use the agent API codes:
+`unauthorized`, `not_found`, `unsupported` (malformed request, too many
+recipients, group SMS without the default role), `too_long` (more than 100 SMS
+parts), `too_large` (>5 MiB attachment), `mms_send_unsupported` (attachments
+without the default SMS role) and `send_failed`.
 
 The event feed is an in-memory ring buffer (10000 events). When the client's
 cursor is older than the retained window the response sets `"reset": true` and
-the client must re-scan threads and messages.
+the client must re-scan threads and messages. Receive hooks and the send path
+currently emit `message.new` events; `message.updated`, `mms.downloaded` and
+`thread.updated` are not generated yet, so clients reconcile those changes
+through history fetches and read-state polling.
 
 ## Permissions
 
@@ -130,6 +144,38 @@ app in `default_sms_app`.
 
 MMS additionally needs an MMS APN and mobile data (or carrier Wi-Fi calling
 support), same as any other SMS app.
+
+## Limitations and caveats
+
+- The default-SMS role is required for MMS send and for read-state writeback;
+  `/v1/health` reports `backend.send_mms`, `backend.can_mark_read` and the
+  `default_sms_app` accordingly. Without the role, `POST /v1/send` with
+  attachments fails with `501 mms_send_unsupported` and `POST /v1/read` may
+  update no rows.
+- MMS download (and therefore `mms.downloaded`-style receive) only happens for
+  the default SMS app: WAP push broadcasts (`WAP_PUSH_DELIVER`) are delivered
+  to the default app only.
+- Read state is written to the telephony provider (`read` + `seen`); some
+  vendor ROMs ignore `seen`. The bridge treats `read` as authoritative.
+- Battery optimizations can kill the foreground service on aggressive ROMs;
+  exempt the app, and keep `POST_NOTIFICATIONS` granted so the FGS notification
+  is visible.
+- Contact names are best-effort (`READ_CONTACTS`): `/v1/threads` returns raw
+  addresses, `/v1/contacts` is not implemented (`501`).
+
+## Building
+
+The app depends on the local `fossify-mmslib` fork instead of the JitPack
+artifact:
+
+```sh
+JAVA_HOME=... ANDROID_HOME=... ./gradlew :app:assembleFossDebug
+# mmslib is expected at ../fossify-mmslib/library, override with:
+MMSLIB_DIR=/path/to/fossify-mmslib/library ./gradlew :app:assembleFossDebug
+```
+
+The debug build installs side-by-side with the stock app
+(`org.fossify.messages.bridge.debug`, label "Messages Bridge debug").
 
 ## Security notes
 
