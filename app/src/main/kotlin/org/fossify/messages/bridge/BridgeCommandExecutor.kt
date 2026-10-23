@@ -134,6 +134,7 @@ internal class BridgeCommandExecutor(private val context: Context, private val o
             hasAttachment = false,
             sendId = command.sendId.ifBlank { "ack-${command.seq}" },
             error = error,
+            commandSeq = command.seq,
         )
     }
 

@@ -32,6 +32,8 @@ internal data class HeartbeatRequest(
     @SerialName("default_sms_app") val defaultSmsApp: Boolean = false,
     val permissions: Map<String, Boolean> = emptyMap(),
     @SerialName("app_version") val appVersion: String = "",
+    // Lets the bridge exclude the phone's own numbers from group participants.
+    val subscriptions: List<BridgeSubscription> = emptyList(),
 )
 
 /**
@@ -64,6 +66,7 @@ internal object BridgeHeartbeat {
             defaultSmsApp = BridgeQueries.isDefaultSmsApp(context),
             permissions = permissionsSnapshot(context),
             appVersion = BuildConfig.VERSION_NAME,
+            subscriptions = BridgeQueries.subscriptions(context),
         )
         try {
             PairingHttp.requestJson(

@@ -20,6 +20,7 @@ import android.provider.Telephony.Sms
 import android.provider.Telephony.Threads
 import android.telephony.SubscriptionInfo
 import android.telephony.SubscriptionManager
+import android.util.Base64
 import androidx.core.content.ContextCompat
 import androidx.core.net.toUri
 import com.google.android.mms.pdu_alt.PduHeaders
@@ -40,6 +41,7 @@ data class BridgeAttachment(
     @SerialName("file_name") val fileName: String = "",
     val size: Long = 0,
     val url: String = "",
+    val base64: String = "",
 )
 
 /** Normalized SMS/MMS message, mirroring the agent API message object. */
@@ -129,6 +131,9 @@ object BridgeQueries {
     const val PROTOCOL_VERSION = 1
     const val DEFAULT_HISTORY_LIMIT = 200
     const val MAX_HISTORY_LIMIT = 1000
+
+    // Keeps base64-encoded inline parts below the protocol's 10485760-byte cap.
+    const val MAX_INLINE_ATTACHMENT_BYTES = 7_864_320L
 
     private const val MMS_TYPE_NOTIFICATION_IND = 130
     private const val MMS_TYPE_NOTIFY_RESP_IND = 131
@@ -432,6 +437,37 @@ object BridgeQueries {
 
             else -> null
         }
+    }
+
+    /**
+     * Loads a message and inlines its MMS part bytes as base64, for events the
+     * app pushes on the pairing transport. The bridge cannot fetch parts from a
+     * NATed phone, so `message.new` payloads must carry the bytes inline.
+     * Parts above [MAX_INLINE_ATTACHMENT_BYTES] are left without inline data
+     * (the documented behavior is to degrade, not to fail the event).
+     */
+    fun messageForEvent(context: Context, messageId: String): BridgeMessage? {
+        val message = message(context, messageId) ?: return null
+        if (message.attachments.isEmpty()) {
+            return message
+        }
+        val (_, _, rowId) = BridgeMessageIds.parse(messageId) ?: return message
+        val inlined = message.attachments.map { attachment ->
+            if (attachment.base64.isNotEmpty() ||
+                attachment.partId <= 0 ||
+                attachment.size > MAX_INLINE_ATTACHMENT_BYTES
+            ) {
+                attachment
+            } else {
+                val part = partBytes(context, rowId, attachment.partId)
+                if (part == null) {
+                    attachment
+                } else {
+                    attachment.copy(base64 = Base64.encodeToString(part.first, Base64.NO_WRAP))
+                }
+            }
+        }
+        return message.copy(attachments = inlined)
     }
 
     /** Returns the raw bytes plus content type of one MMS part, or null when it does not exist. */

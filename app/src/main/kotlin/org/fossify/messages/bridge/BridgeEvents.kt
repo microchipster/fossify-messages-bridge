@@ -38,6 +38,11 @@ data class BridgeEvent(
     @SerialName("parts_sent") val partsSent: Int = 0,
     val pending: Boolean = false,
     val error: BridgeEventError? = null,
+    // Full message payload. The pairing transport must carry it because the
+    // bridge cannot fetch messages (or MMS parts) from a NATed phone.
+    val message: BridgeMessage? = null,
+    // Command sequence this event acknowledges (acks only).
+    @SerialName("command_seq") val commandSeq: Long = 0,
 )
 
 /** GET /v1/events response envelope. */
@@ -132,10 +137,11 @@ object BridgeEvents {
             if (rowId <= 0 || !BridgeConfig.newInstance(context).isActive()) {
                 return
             }
+            val messageId = BridgeMessageIds.format("sms", normalizeSubId(subId), rowId)
             append(
                 BridgeEvent(
                     type = TYPE_MESSAGE_NEW,
-                    messageId = BridgeMessageIds.format("sms", normalizeSubId(subId), rowId),
+                    messageId = messageId,
                     threadId = threadId,
                     subId = normalizeSubId(subId),
                     timestampMs = timestampMs,
@@ -143,6 +149,7 @@ object BridgeEvents {
                     isMms = false,
                     hasAttachment = false,
                     preview = preview(body),
+                    message = BridgeQueries.messageForEvent(context, messageId),
                 )
             )
         } catch (e: Exception) {
@@ -168,10 +175,11 @@ object BridgeEvents {
             if (rowId <= 0 || !BridgeConfig.newInstance(context).isActive()) {
                 return
             }
+            val messageId = BridgeMessageIds.format("mms", normalizeSubId(subId), rowId)
             append(
                 BridgeEvent(
                     type = TYPE_MESSAGE_NEW,
-                    messageId = BridgeMessageIds.format("mms", normalizeSubId(subId), rowId),
+                    messageId = messageId,
                     threadId = threadId,
                     subId = normalizeSubId(subId),
                     timestampMs = timestampMs,
@@ -179,6 +187,7 @@ object BridgeEvents {
                     isMms = true,
                     hasAttachment = hasAttachment,
                     preview = preview(body),
+                    message = BridgeQueries.messageForEvent(context, messageId),
                 )
             )
         } catch (e: Exception) {
