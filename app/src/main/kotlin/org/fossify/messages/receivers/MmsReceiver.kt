@@ -2,6 +2,7 @@ package org.fossify.messages.receivers
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import com.bumptech.glide.Glide
 import com.klinker.android.send_message.MmsReceivedReceiver
 import org.fossify.commons.extensions.baseConfig
@@ -12,6 +13,7 @@ import org.fossify.commons.helpers.ContactLookupResult
 import org.fossify.commons.helpers.SimpleContactsHelper
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.messages.R
+import org.fossify.messages.bridge.BridgeEvents
 import org.fossify.messages.extensions.getConversations
 import org.fossify.messages.extensions.getMMS
 import org.fossify.messages.extensions.getLatestMMS
@@ -99,5 +101,20 @@ class MmsReceiver : MmsReceivedReceiver() {
         }
         refreshMessages()
         refreshConversations()
+
+        try {
+            BridgeEvents.onMmsReceived(
+                context = context,
+                rowId = mms.id,
+                threadId = mms.threadId,
+                subId = mms.subscriptionId,
+                sender = address,
+                body = mms.body,
+                hasAttachment = mms.attachment?.attachments?.isNotEmpty() == true,
+                timestampMs = mms.millis(),
+            )
+        } catch (e: Exception) {
+            Log.e("MmsReceiver", "failed to emit bridge event", e)
+        }
     }
 }
