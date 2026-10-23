@@ -189,9 +189,21 @@
         <activity
             android:name=".bridge.PairingActivity"
             android:configChanges="orientation"
-            android:exported="false"
+            android:exported="true"
             android:label="@string/bridge_pairing"
-            android:parentActivityName=".activities.SettingsActivity" />
+            android:parentActivityName=".activities.SettingsActivity">
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data
+                    android:host="pair"
+                    android:scheme="smsmms" />
+            </intent-filter>
+        </activity>
 
         <service
             android:name=".bridge.BridgeService"

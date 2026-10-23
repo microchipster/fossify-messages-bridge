@@ -129,9 +129,15 @@ Open **Settings → Bridge pairing** in the app and either
 - scan the QR code (camera permission; optional, the payload can be pasted
   instead),
 - paste the payload and tap *Use payload* (it fills the fields and pairs
-  immediately), or
+  immediately),
+- open the `smsmms://pair?...` link itself (tapping it in a chat or a browser
+  starts the pairing screen and pairs immediately), or
 - type the homeserver URL, the optional bridge URL and the 8 character code,
   then tap *Pair*.
+
+The *Device ID* field defaults to the app's stable device id. Set it to the
+phone's `adb` serial when the adb agent bridges the same phone, so both
+transports resolve to the same rooms (`bridge_device_id` preference).
 
 When the bridge URL is left empty the app reads `{hs}/.well-known/matrix/client`
 and uses the `chat.<namespace>.bridge.sms_mms` key (the playbook injects it). A
@@ -142,21 +148,17 @@ service and shows `Paired as @user:example.com`. *Unpair this device* clears
 the local pairing state; the bridge side can revoke a token with
 `!sms unpair`, and a rejected token clears the local pairing automatically.
 
-The activity is not exported. The supported entry point is the settings row; on
-a debuggable build it can also be started from adb:
+The activity is exported and reachable through the `smsmms://pair` link. It can
+also be launched from adb, which is handy for scripted pairing:
 
 ```sh
-# debug build
-adb shell run-as org.fossify.messages.bridge.debug am start -n \
-  org.fossify.messages.bridge.debug/org.fossify.messages.bridge.PairingActivity
-# release build
-adb shell run-as org.fossify.messages.bridge am start -n \
-  org.fossify.messages.bridge/org.fossify.messages.bridge.PairingActivity
+adb shell am start -a android.intent.action.VIEW \
+  -d "smsmms://pair?hs=…&b=…&code=ABCD1234&v=1" --es device_id android-test-0001
 ```
 
-`run-as` executes the command as the app's own user, which is required because
-the activity is not exported (`am start` from the shell would be rejected on
-recent Android versions).
+The `payload` and `device_id` string extras are accepted as an alternative to
+the data URI (the `device_id` extra is stored as `bridge_device_id` before
+pairing starts).
 
 ### Runtime behaviour
 
