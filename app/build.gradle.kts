@@ -115,7 +115,7 @@ android {
         )
     }
 
-    namespace = project.property("APP_ID").toString()
+    namespace = "org.fossify.messages"
 
     lint {
         checkReleaseBuilds = false
@@ -143,7 +143,7 @@ dependencies {
     implementation(libs.fossify.commons)
     implementation(libs.eventbus)
     implementation(libs.indicator.fast.scroll)
-    implementation(libs.mmslib)
+    implementation(project(":mmslib"))
     implementation(libs.androidx.swiperefreshlayout)
     implementation(libs.androidx.constraintlayout)
     implementation(libs.androidx.documentfile)
