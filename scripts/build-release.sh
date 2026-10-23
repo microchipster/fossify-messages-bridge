@@ -50,10 +50,12 @@ STOREPASS_FILE="$HOME/.config/android/$APP_ID/storepass"
 
 KEYSTORE_ONLY=0
 INSTALL=0
+GENERATE_KEY=0
 for arg in "$@"; do
 	case "$arg" in
 	--keystore-only) KEYSTORE_ONLY=1 ;;
 	--install) INSTALL=1 ;;
+	--generate-key) GENERATE_KEY=1 ;;
 	*)
 		echo "error: unknown argument: $arg" >&2
 		exit 1
@@ -77,6 +79,24 @@ read_pass_password() {
 }
 
 if [ ! -f "$KEYSTORE" ]; then
+	if [ "$GENERATE_KEY" != "1" ]; then
+		cat >&2 <<-EOF
+			error: no signing keystore for $APP_ID at $KEYSTORE.
+
+			Refusing to generate a new key automatically: a different key cannot
+			upgrade an installed APK in place (the installer rejects the signature
+			mismatch), so a new key is only ever wanted for a brand-new app.
+
+			To restore the existing key:
+			  1. git -C ~/.password-store pull        # keys are committed there
+			  2. symlink it: ln -sf "$KEYSTORE" app/release.keystore
+			  3. restore the password at $STOREPASS_FILE
+			     (or unlock GPG and let \`pass show $PASS_ENTRY/storepass\` work)
+
+			To generate a key on purpose (first release only), re-run with --generate-key.
+		EOF
+		exit 1
+	fi
 	echo "==> generating a new signing keystore for $APP_ID (stored in pass)"
 	STORE_PASSWORD="$(read_pass_password)"
 	if [ -z "$STORE_PASSWORD" ]; then
@@ -102,7 +122,8 @@ if [ ! -f "$KEYSTORE" ]; then
 		git -C "$HOME/.password-store" commit -q -m "android: add signing keys for $APP_ID" >/dev/null 2>&1; then
 		echo "==> committed the new keys to the pass git repo"
 	fi
-	echo "==> back it up: the pass repo is git-backed, consider an offline export of the keystore too"
+	echo "==> push the pass repo to its remote (git -C ~/.password-store push) so the keys exist somewhere other than this machine"
+	echo "==> consider an offline export too (see docs/SIGNING.md)"
 else
 	if [ -f "$STOREPASS_FILE" ]; then
 		STORE_PASSWORD="$(head -1 "$STOREPASS_FILE")"
