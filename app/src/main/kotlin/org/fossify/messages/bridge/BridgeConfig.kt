@@ -25,6 +25,7 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
         private const val BRIDGE_ENABLED = "bridge_enabled"
         private const val BRIDGE_TOKEN = "bridge_token"
         private const val BRIDGE_PORT = "bridge_port"
+        private const val BRIDGE_DEVICE_ID = "bridge_device_id"
 
         fun newInstance(context: Context) = BridgeConfig(context)
     }
@@ -40,6 +41,18 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
     var bridgeToken: String
         get() = prefs.getString(BRIDGE_TOKEN, "").orEmpty()
         set(token) = prefs.edit().putString(BRIDGE_TOKEN, token).apply()
+
+    /**
+     * Stable device identifier reported over the bridge API.
+     *
+     * The bridge derives portal IDs from this value, so it must stay stable and
+     * should match the identifier used by the adb agent (the adb serial) when
+     * the same phone is bridged through both transports, otherwise the two
+     * modes would create separate Matrix rooms.
+     */
+    var bridgeDeviceId: String
+        get() = prefs.getString(BRIDGE_DEVICE_ID, "").orEmpty()
+        set(id) = prefs.edit().putString(BRIDGE_DEVICE_ID, id).apply()
 
     /** Returns the stored bearer token, generating and persisting a 32 hex char token on first use. */
     @Synchronized

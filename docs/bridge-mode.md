@@ -19,6 +19,11 @@ the regular app preferences file (`shared_prefs/Prefs.xml`):
 | `bridge_enabled` | `false` | Starts/stops the foreground service |
 | `bridge_port` | `8391` | TCP port of the HTTP server |
 | `bridge_token` | empty | Bearer token; generated on first service start |
+| `bridge_device_id` | empty | Stable device id reported in `/v1/health`; falls back to `Build.getSerial()`/`ANDROID_ID`. Set it to the adb serial when the same phone is also used with the adb agent, so both transports produce identical portal IDs |
+
+The bridge derives room identity from `device.serial`, so changing
+`bridge_device_id` on a running deployment makes the bridge treat the phone as a
+new device and create a second set of rooms. Set it once, right after installing.
 
 There is no in-app settings screen yet, so on a debug build write the preference
 with `run-as`:
