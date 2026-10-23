@@ -52,6 +52,7 @@ internal object BridgeStateSnapshot {
                     isMms = false,
                     hasAttachment = thread.hasAttachment,
                     preview = thread.snippet.take(MAX_PREVIEW_LENGTH),
+                    recipients = thread.recipients,
                 )
             )
 
