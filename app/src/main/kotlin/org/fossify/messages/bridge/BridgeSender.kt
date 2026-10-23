@@ -70,6 +70,8 @@ object BridgeSender {
     private const val RESOLVE_TIMEOUT_MS = 30_000L
     private const val RESOLVE_POLL_INTERVAL_MS = 200L
     private const val MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+    private const val MAX_SMS_PARTS = 100
+    private const val MAX_RECIPIENTS = 20
 
     fun send(context: Context, request: BridgeSendRequest): BridgeSendResponse {
         val sendId = request.sendId.ifBlank { "app-${System.currentTimeMillis()}" }
@@ -79,17 +81,39 @@ object BridgeSender {
             recipients = BridgeQueries.threadRecipients(context, request.threadId).orEmpty()
         }
         if (recipients.isEmpty()) {
-            throw BridgeSendException(400, "send_failed", "no recipients given")
+            throw BridgeSendException(400, "unsupported", "no recipients given")
+        }
+        if (recipients.size > MAX_RECIPIENTS) {
+            throw BridgeSendException(501, "unsupported", "too many recipients (max $MAX_RECIPIENTS)")
         }
         if (request.text.isEmpty() && request.attachments.isEmpty()) {
-            throw BridgeSendException(400, "send_failed", "message has no text and no attachments")
+            throw BridgeSendException(400, "unsupported", "message has no text and no attachments")
         }
 
         val subId = if (request.subId > 0) request.subId else Settings.DEFAULT_SUBSCRIPTION_ID
         val attachments = request.attachments.map { decodeAttachment(it) }
-        val isMms = attachments.isNotEmpty() || recipients.size > 1 || context.isLongMmsMessage(request.text)
+        val defaultSmsApp = BridgeQueries.isDefaultSmsApp(context)
+        val isMms = attachments.isNotEmpty() || recipients.size > 1 || (context.isLongMmsMessage(request.text) && defaultSmsApp)
+        if (isMms && !defaultSmsApp) {
+            // MMS send and provider outbox persistence need the default SMS role.
+            if (attachments.isNotEmpty()) {
+                throw BridgeSendException(
+                    501,
+                    "mms_send_unsupported",
+                    "MMS sending requires this app to be the default SMS app",
+                )
+            }
+            if (recipients.size > 1) {
+                throw BridgeSendException(
+                    501,
+                    "unsupported",
+                    "group SMS requires this app to be the default SMS app (group MMS)",
+                )
+            }
+        }
 
-        return if (isMms) {
+        val mms = isMms && defaultSmsApp
+        return if (mms) {
             sendMms(context, sendId, request.text, recipients, attachments, subId)
         } else {
             sendSms(context, sendId, recipients.first(), request.text, subId)
@@ -102,10 +126,10 @@ object BridgeSender {
         val bytes = try {
             Base64.decode(attachment.base64, Base64.DEFAULT)
         } catch (_: IllegalArgumentException) {
-            throw BridgeSendException(400, "send_failed", "attachment '${attachment.fileName}' is not valid base64")
+            throw BridgeSendException(400, "unsupported", "attachment '${attachment.fileName}' is not valid base64")
         }
         if (bytes.isEmpty()) {
-            throw BridgeSendException(400, "send_failed", "attachment '${attachment.fileName}' is empty")
+            throw BridgeSendException(400, "unsupported", "attachment '${attachment.fileName}' is empty")
         }
         if (bytes.size > MAX_ATTACHMENT_BYTES) {
             throw BridgeSendException(413, "too_large", "attachment '${attachment.fileName}' is too large")
@@ -126,6 +150,10 @@ object BridgeSender {
     ): BridgeSendResponse {
         val settings = context.getSendMessageSettings()
         val effectiveSubId = if (subId > 0) subId else settings.subscriptionId
+        val partsSent = SmsMessage.calculateLength(text, false).first().coerceAtLeast(1)
+        if (partsSent > MAX_SMS_PARTS) {
+            throw BridgeSendException(413, "too_long", "message needs $partsSent SMS parts (max $MAX_SMS_PARTS)")
+        }
         val threadId = context.getThreadId(address)
         val markId = maxRowId(context, Sms.CONTENT_URI)
 
@@ -142,7 +170,6 @@ object BridgeSender {
         }
 
         val row = resolveNewRow(context, Sms.CONTENT_URI, markId, threadId)
-        val partsSent = SmsMessage.calculateLength(text, false).first().coerceAtLeast(1)
         val response = if (row != null) {
             BridgeSendResponse(
                 sendId = sendId,
