@@ -13,6 +13,10 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.AudioManager
+import android.media.RingtoneManager
+import android.os.Build
 import android.os.IBinder
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -102,15 +106,7 @@ class BridgeService : Service() {
 
     private fun startAsForeground(port: Int) {
         val notificationManager = getSystemService(NotificationManager::class.java) ?: return
-        if (notificationManager.getNotificationChannel(NOTIFICATION_CHANNEL_ID) == null) {
-            notificationManager.createNotificationChannel(
-                NotificationChannel(
-                    NOTIFICATION_CHANNEL_ID,
-                    getString(R.string.bridge_service_title),
-                    NotificationManager.IMPORTANCE_LOW,
-                )
-            )
-        }
+        ensureNotificationChannel(notificationManager)
 
         val intent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
@@ -125,15 +121,53 @@ class BridgeService : Service() {
             .setContentText(getString(R.string.bridge_service_text, port))
             .setContentIntent(pendingIntent)
             .setOngoing(true)
+            .setSilent(true)
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .build()
 
-        ServiceCompat.startForeground(
-            this,
-            NOTIFICATION_ID,
-            notification,
-            ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING,
-        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            ServiceCompat.startForeground(
+                this,
+                NOTIFICATION_ID,
+                notification,
+                ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING,
+            )
+        } else {
+            // FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING only exists on API 34+;
+            // the manifest attribute is ignored below that.
+            startForeground(NOTIFICATION_ID, notification)
+        }
+    }
+
+    /**
+     * The bridge reuses the message channel `fossify_messages`; when it does not
+     * exist yet (bridge started before any message arrived), create it exactly
+     * like [org.fossify.messages.helpers.NotificationHelper] would, so message
+     * notifications keep their upstream importance, sound and vibration.
+     */
+    private fun ensureNotificationChannel(notificationManager: NotificationManager) {
+        if (notificationManager.getNotificationChannel(NOTIFICATION_CHANNEL_ID) != null) {
+            return
+        }
+
+        val audioAttributes = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+            .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+            .setLegacyStreamType(AudioManager.STREAM_NOTIFICATION)
+            .build()
+
+        NotificationChannel(
+            NOTIFICATION_CHANNEL_ID,
+            getString(R.string.channel_received_sms),
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            setBypassDnd(false)
+            enableLights(true)
+            setSound(RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION), audioAttributes)
+            enableVibration(true)
+            notificationManager.createNotificationChannel(this)
+        }
     }
 }
