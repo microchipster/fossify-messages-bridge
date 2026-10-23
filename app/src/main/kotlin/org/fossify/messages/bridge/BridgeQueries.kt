@@ -118,6 +118,8 @@ data class BridgeHealth(
  * only an overlay used by the app UI, so all history is read from and all read
  * state is written to the provider.
  */
+// Cohesive provider data-access layer: many small query helpers over one cursor model.
+@Suppress("TooManyFunctions", "LargeClass")
 object BridgeQueries {
     const val PROTOCOL_VERSION = 1
     const val DEFAULT_HISTORY_LIMIT = 200
@@ -126,6 +128,47 @@ object BridgeQueries {
     private const val MMS_TYPE_NOTIFICATION_IND = 130
     private const val MMS_TYPE_NOTIFY_RESP_IND = 131
     private const val MMS_TYPE_DELIVERY_IND = 134
+
+    // Column positions of `smsProjection`, in projection order.
+    private const val SMS_COL_ID = 0
+    private const val SMS_COL_THREAD_ID = 1
+    private const val SMS_COL_ADDRESS = 2
+    private const val SMS_COL_DATE = 3
+    private const val SMS_COL_DATE_SENT = 4
+    private const val SMS_COL_TYPE = 5
+    private const val SMS_COL_READ = 6
+    private const val SMS_COL_SEEN = 7
+    private const val SMS_COL_STATUS = 8
+    private const val SMS_COL_SUBSCRIPTION_ID = 9
+    private const val SMS_COL_BODY = 10
+
+    // Column positions of `mmsProjection`, in projection order.
+    private const val MMS_COL_ID = 0
+    private const val MMS_COL_THREAD_ID = 1
+    private const val MMS_COL_DATE = 2
+    private const val MMS_COL_MESSAGE_BOX = 3
+    private const val MMS_COL_MESSAGE_TYPE = 4
+    private const val MMS_COL_READ = 5
+    private const val MMS_COL_SEEN = 6
+    private const val MMS_COL_STATUS = 7
+    private const val MMS_COL_SUBSCRIPTION_ID = 8
+    private const val MMS_COL_TEXT_ONLY = 9
+
+    // Column positions of `partProjection`, in projection order.
+    private const val PART_COL_ID = 0
+    private const val PART_COL_CONTENT_TYPE = 1
+    private const val PART_COL_TEXT = 2
+    private const val PART_COL_NAME = 3
+    private const val PART_COL_FILE_NAME = 4
+    private const val PART_COL_CONTENT_LOCATION = 5
+    private const val PART_COL_CONTENT_ID = 6
+
+    // Column positions of the raw `content://telephony/siminfo` fallback query.
+    private const val SIMINFO_COL_SUB_ID = 0
+    private const val SIMINFO_COL_SIM_SLOT = 1
+    private const val SIMINFO_COL_DISPLAY_NAME = 2
+    private const val SIMINFO_COL_CARRIER_NAME = 3
+    private const val SIMINFO_COL_NUMBER = 4
 
     // Notification/ack rows are not user visible messages. SEND_REQ (128) is
     // kept so a just-persisted outgoing MMS can be resolved right after send.
@@ -258,11 +301,11 @@ object BridgeQueries {
                 while (cursor.moveToNext()) {
                     subscriptions.add(
                         BridgeSubscription(
-                            subId = cursor.getInt(0),
-                            simSlot = cursor.getInt(1),
-                            displayName = cursor.getStringOrEmpty(2),
-                            carrier = cursor.getStringOrEmpty(3),
-                            number = cursor.getStringOrEmpty(4),
+                            subId = cursor.getInt(SIMINFO_COL_SUB_ID),
+                            simSlot = cursor.getInt(SIMINFO_COL_SIM_SLOT),
+                            displayName = cursor.getStringOrEmpty(SIMINFO_COL_DISPLAY_NAME),
+                            carrier = cursor.getStringOrEmpty(SIMINFO_COL_CARRIER_NAME),
+                            number = cursor.getStringOrEmpty(SIMINFO_COL_NUMBER),
                         )
                     )
                 }
@@ -363,7 +406,7 @@ object BridgeQueries {
 
     /** Loads a single message by its wire id (`sms:<sub>:<row>` / `mms:<sub>:<row>`), or null. */
     fun message(context: Context, messageId: String): BridgeMessage? {
-        val (kind, _, rowId) = BridgeEvents.parseMessageId(messageId) ?: return null
+        val (kind, _, rowId) = BridgeMessageIds.parse(messageId) ?: return null
         return when (kind) {
             "sms" -> querySmsById(context, rowId)?.let { row ->
                 val threadParticipants = threadRecipients(context, row.threadId).orEmpty()
@@ -381,8 +424,14 @@ object BridgeQueries {
 
     /** Returns the raw bytes plus content type of one MMS part, or null when it does not exist. */
     fun partBytes(context: Context, mmsId: Long, partId: Long): Pair<ByteArray, String>? {
-        var contentType = ""
-        try {
+        val contentType = partContentType(context, mmsId, partId) ?: return null
+        val bytes = partData(context, partId) ?: return null
+        return bytes to contentType
+    }
+
+    private fun partContentType(context: Context, mmsId: Long, partId: Long): String? {
+        return try {
+            var contentType: String? = null
             context.contentResolver.query(
                 "content://mms/$mmsId/part".toUri(),
                 arrayOf(Mms.Part._ID, Mms.Part.CONTENT_TYPE),
@@ -390,22 +439,22 @@ object BridgeQueries {
                 arrayOf(partId.toString()),
                 null,
             )?.use { cursor ->
-                if (!cursor.moveToFirst()) {
-                    return null
+                if (cursor.moveToFirst()) {
+                    contentType = cursor.getStringOrEmpty(PART_COL_CONTENT_TYPE)
                 }
-                contentType = cursor.getStringOrEmpty(1)
-            } ?: return null
+            }
+            contentType
         } catch (_: Exception) {
-            return null
+            null
         }
+    }
 
-        val bytes = try {
+    private fun partData(context: Context, partId: Long): ByteArray? {
+        return try {
             context.contentResolver.openInputStream("content://mms/part/$partId".toUri())?.use { it.readBytes() }
         } catch (_: Exception) {
             null
-        } ?: return null
-
-        return bytes to contentType
+        }
     }
 
     /** Marks all messages of a thread as read+seen, optionally only up to [upToMs]. Returns the updated row count. */
@@ -456,7 +505,7 @@ object BridgeQueries {
     fun markMessagesRead(context: Context, messageIds: List<String>): Int {
         var updated = 0
         for (messageId in messageIds) {
-            val (kind, _, rowId) = BridgeEvents.parseMessageId(messageId) ?: continue
+            val (kind, _, rowId) = BridgeMessageIds.parse(messageId) ?: continue
             val uri = if (kind == "mms") Mms.CONTENT_URI else Sms.CONTENT_URI
             val values = ContentValues().apply {
                 put(Sms.READ, 1)
@@ -471,6 +520,8 @@ object BridgeQueries {
         return updated
     }
 
+    // Flat mirror of the `smsProjection` columns; grouping fields would only add indirection.
+    @Suppress("LongParameterList")
     private class SmsRow(
         val id: Long,
         val threadId: Long,
@@ -485,6 +536,8 @@ object BridgeQueries {
         val body: String,
     )
 
+    // Flat mirror of the `mmsProjection` columns; grouping fields would only add indirection.
+    @Suppress("LongParameterList")
     private class MmsRow(
         val id: Long,
         val threadId: Long,
@@ -549,7 +602,9 @@ object BridgeQueries {
         afterMs: Long,
         limit: Int,
     ): List<MmsRow> {
-        val conditions = StringBuilder("${Mms.THREAD_ID} = ? AND ${Mms.MESSAGE_BOX} != ${Mms.MESSAGE_BOX_DRAFTS} AND $MMS_NOT_USER_VISIBLE")
+        val conditions = StringBuilder(
+            "${Mms.THREAD_ID} = ? AND ${Mms.MESSAGE_BOX} != ${Mms.MESSAGE_BOX_DRAFTS} AND $MMS_NOT_USER_VISIBLE"
+        )
         val args = arrayListOf(threadId.toString())
         if (beforeMs > 0) {
             conditions.append(" AND ${Mms.DATE} < ?")
@@ -589,37 +644,37 @@ object BridgeQueries {
     }
 
     private fun toSmsRow(cursor: Cursor): SmsRow? {
-        val address = cursor.getStringOrEmpty(2)
+        val address = cursor.getStringOrEmpty(SMS_COL_ADDRESS)
         return SmsRow(
-            id = cursor.getLong(0),
-            threadId = cursor.getLong(1),
-            subId = cursor.getInt(9),
+            id = cursor.getLong(SMS_COL_ID),
+            threadId = cursor.getLong(SMS_COL_THREAD_ID),
+            subId = cursor.getInt(SMS_COL_SUBSCRIPTION_ID),
             address = address,
-            dateMs = cursor.getLong(3),
-            dateSentMs = cursor.getLong(4),
-            type = cursor.getInt(5),
-            read = cursor.getInt(6) == 1,
-            seen = cursor.getInt(7) == 1,
-            status = cursor.getInt(8),
-            body = cursor.getStringOrEmpty(10),
+            dateMs = cursor.getLong(SMS_COL_DATE),
+            dateSentMs = cursor.getLong(SMS_COL_DATE_SENT),
+            type = cursor.getInt(SMS_COL_TYPE),
+            read = cursor.getInt(SMS_COL_READ) == 1,
+            seen = cursor.getInt(SMS_COL_SEEN) == 1,
+            status = cursor.getInt(SMS_COL_STATUS),
+            body = cursor.getStringOrEmpty(SMS_COL_BODY),
         )
     }
 
     private fun toMmsRow(cursor: Cursor): MmsRow? {
-        if (cursor.isNull(0)) {
+        if (cursor.isNull(MMS_COL_ID)) {
             return null
         }
         return MmsRow(
-            id = cursor.getLong(0),
-            threadId = cursor.getLong(1),
-            subId = cursor.getInt(8),
-            dateMs = cursor.getLong(2) * 1000L,
-            messageBox = cursor.getInt(3),
-            messageType = cursor.getInt(4),
-            read = cursor.getInt(5) == 1,
-            seen = cursor.getInt(6) == 1,
-            status = cursor.getInt(7),
-            textOnly = cursor.getInt(9) == 1,
+            id = cursor.getLong(MMS_COL_ID),
+            threadId = cursor.getLong(MMS_COL_THREAD_ID),
+            subId = cursor.getInt(MMS_COL_SUBSCRIPTION_ID),
+            dateMs = cursor.getLong(MMS_COL_DATE) * 1000L,
+            messageBox = cursor.getInt(MMS_COL_MESSAGE_BOX),
+            messageType = cursor.getInt(MMS_COL_MESSAGE_TYPE),
+            read = cursor.getInt(MMS_COL_READ) == 1,
+            seen = cursor.getInt(MMS_COL_SEEN) == 1,
+            status = cursor.getInt(MMS_COL_STATUS),
+            textOnly = cursor.getInt(MMS_COL_TEXT_ONLY) == 1,
         )
     }
 
@@ -631,7 +686,7 @@ object BridgeQueries {
             threadParticipants
         }
         return BridgeMessage(
-            id = BridgeEvents.messageId("sms", BridgeEvents.normalizeSubId(row.subId), row.id),
+            id = BridgeMessageIds.format("sms", BridgeEvents.normalizeSubId(row.subId), row.id),
             threadId = row.threadId,
             subId = BridgeEvents.normalizeSubId(row.subId),
             timestampMs = row.dateMs,
@@ -698,7 +753,7 @@ object BridgeQueries {
         }
 
         return BridgeMessage(
-            id = BridgeEvents.messageId("mms", BridgeEvents.normalizeSubId(row.subId), row.id),
+            id = BridgeMessageIds.format("mms", BridgeEvents.normalizeSubId(row.subId), row.id),
             threadId = row.threadId,
             subId = BridgeEvents.normalizeSubId(row.subId),
             timestampMs = row.dateMs,
@@ -727,35 +782,32 @@ object BridgeQueries {
 
     private fun queryParts(context: Context, mmsId: Long): List<PartRow> {
         val parts = ArrayList<PartRow>()
-        try {
-            context.contentResolver.query(
-                "content://mms/$mmsId/part".toUri(),
-                partProjection,
-                null,
-                null,
-                "${Mms.Part.SEQ} ASC",
-            )?.use { cursor ->
-                while (cursor.moveToNext()) {
-                    val contentType = cursor.getStringOrEmpty(1).lowercase()
-                    if (contentType.isEmpty()) {
-                        continue
-                    }
-                    parts.add(
-                        PartRow(
-                            id = cursor.getLong(0),
-                            contentType = contentType,
-                            text = cursor.getStringOrEmpty(2),
-                            name = cursor.getStringOrEmpty(3),
-                            fileName = cursor.getStringOrEmpty(4),
-                            contentLocation = cursor.getStringOrEmpty(5),
-                            contentId = cursor.getStringOrEmpty(6),
-                        )
-                    )
-                }
+        queryRows(
+            context,
+            "content://mms/$mmsId/part".toUri(),
+            partProjection,
+            null,
+            null,
+            "${Mms.Part.SEQ} ASC",
+        ) { cursor ->
+            val contentType = cursor.getStringOrEmpty(PART_COL_CONTENT_TYPE).lowercase()
+            if (contentType.isNotEmpty()) {
+                parts.add(toPartRow(cursor, contentType))
             }
-        } catch (_: Exception) {
         }
         return parts
+    }
+
+    private fun toPartRow(cursor: Cursor, contentType: String): PartRow {
+        return PartRow(
+            id = cursor.getLong(PART_COL_ID),
+            contentType = contentType,
+            text = cursor.getStringOrEmpty(PART_COL_TEXT),
+            name = cursor.getStringOrEmpty(PART_COL_NAME),
+            fileName = cursor.getStringOrEmpty(PART_COL_FILE_NAME),
+            contentLocation = cursor.getStringOrEmpty(PART_COL_CONTENT_LOCATION),
+            contentId = cursor.getStringOrEmpty(PART_COL_CONTENT_ID),
+        )
     }
 
     private fun mmsSender(context: Context, mmsId: Long): String {
@@ -768,25 +820,21 @@ object BridgeQueries {
 
     private fun mmsAddresses(context: Context, mmsId: Long, vararg types: Int): List<String> {
         val addresses = ArrayList<String>()
-        try {
-            context.contentResolver.query(
-                "content://mms/$mmsId/addr".toUri(),
-                arrayOf(Mms.Addr.TYPE, Mms.Addr.ADDRESS),
-                null,
-                null,
-                null,
-            )?.use { cursor ->
-                while (cursor.moveToNext()) {
-                    val type = cursor.getInt(0)
-                    if (types.contains(type)) {
-                        val address = cursor.getStringOrEmpty(1)
-                        if (address.isNotBlank() && !addresses.contains(address)) {
-                            addresses.add(address)
-                        }
-                    }
+        queryRows(
+            context,
+            "content://mms/$mmsId/addr".toUri(),
+            arrayOf(Mms.Addr.TYPE, Mms.Addr.ADDRESS),
+            null,
+            null,
+            null,
+        ) { cursor ->
+            val type = cursor.getInt(0)
+            if (types.contains(type)) {
+                val address = cursor.getStringOrEmpty(1)
+                if (address.isNotBlank() && !addresses.contains(address)) {
+                    addresses.add(address)
                 }
             }
-        } catch (_: Exception) {
         }
         return addresses
     }

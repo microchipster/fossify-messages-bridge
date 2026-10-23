@@ -82,6 +82,7 @@ class PairingPoller(private val context: Context) {
         queueThread = null
     }
 
+    // The loop must survive any bridge or provider failure and simply retry with backoff.
     @Suppress("TooGenericExceptionCaught")
     private fun runQueueLoop() {
         var backoff = BACKOFF_INITIAL_MS
@@ -117,6 +118,7 @@ class PairingPoller(private val context: Context) {
         }
     }
 
+    // A stopped event loop must never take the foreground service down with it.
     @Suppress("TooGenericExceptionCaught")
     private fun runEventLoop() {
         try {
@@ -162,6 +164,7 @@ class PairingPoller(private val context: Context) {
         }
     }
 
+    // A response that cannot be parsed is reported as a protocol error, whatever the parser throws.
     @Suppress("TooGenericExceptionCaught")
     private fun fetchQueue(token: String): QueueResponse {
         val url = PairingHttp.endpoint(store.bridgeBaseUrl, "/_smsmms/v1/queue") +

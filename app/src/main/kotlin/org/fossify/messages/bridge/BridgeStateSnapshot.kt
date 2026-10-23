@@ -28,6 +28,7 @@ private val SNAPSHOT_WINDOW_MS = TimeUnit.HOURS.toMillis(SNAPSHOT_WINDOW_HOURS.t
 internal object BridgeStateSnapshot {
 
     /** Recent `thread.updated` and `message.new` events newer than [sinceMs], oldest first. */
+    // A snapshot that cannot be built is skipped; the bridge will catch up on the next trigger.
     @Suppress("TooGenericExceptionCaught")
     fun recentEvents(context: Context, sinceMs: Long): List<BridgeEvent> {
         val events = ArrayList<BridgeEvent>()

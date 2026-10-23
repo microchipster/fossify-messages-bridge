@@ -96,6 +96,7 @@ internal class PairingOutbox(private val context: Context, private val store: Pa
      * Pushes all pending events with fresh sequence numbers.
      * Returns false when the bridge could not be reached.
      */
+    // Any push failure keeps the events queued; the poller loop decides when to retry.
     @Suppress("TooGenericExceptionCaught")
     fun flush(): Boolean {
         synchronized(lock) {
@@ -154,6 +155,7 @@ internal class PairingOutbox(private val context: Context, private val store: Pa
         }
     }
 
+    // An unreadable acknowledgement is not fatal: the whole batch is assumed accepted.
     @Suppress("TooGenericExceptionCaught")
     private fun acknowledgedCount(body: String, batchSize: Int): Int {
         return try {
@@ -182,6 +184,7 @@ internal class PairingOutbox(private val context: Context, private val store: Pa
         return decodeList(store.recentSendResults, BridgeEvent.serializer())
     }
 
+    // Persisted state that cannot be parsed is dropped instead of breaking the poller.
     @Suppress("TooGenericExceptionCaught")
     private fun <T> decodeList(raw: String, format: kotlinx.serialization.KSerializer<T>): List<T> {
         if (raw.isEmpty()) {
