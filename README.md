@@ -5,6 +5,30 @@
 
 Fossify Messages is your trusted messaging companion, designed to enhance your messaging experience in various ways.
 
+---
+
+> ### 🔗 This is the **Messages Bridge** fork
+>
+> Adds *bridge mode*: pair the app with the
+> [mautrix-android-sms-mms](/microchipster/mautrix-android-sms-mms)
+> Matrix bridge and your SMS/MMS threads become Matrix rooms (group chats,
+> attachments, read state included). Everything else is upstream Fossify Messages.
+>
+> **Get it:** download the signed APK from the
+> [releases page](/repos/fossify-messages-bridge/releases)
+> and install it side by side with the regular app:
+>
+> ```sh
+> adb install -r MessagesBridge-<version>.apk
+> ```
+>
+> **Set it up:** open the app → grant SMS permissions → make it the default SMS app
+> (needed for MMS/read sync) → **Settings → Bridge pairing** → scan the QR code from
+> `!sms login app-pair` in your bridge management room. Full instructions live in the
+> [bridge README](/microchipster/mautrix-android-sms-mms#quick-start-app-mode).
+
+---
+
 **📱 STAY CONNECTED WITH EASE:**  
 With Fossify Messages, you can effortlessly send SMS and MMS messages to stay connected with your loved ones. Enjoy SMS/MMS based group messaging and express yourself with photos, emojis, and quick greetings.
 
