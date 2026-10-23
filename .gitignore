@@ -11,3 +11,6 @@ keystore.properties
 fastlane/fastlane.json
 fastlane/report.xml
 .kotlin/
+
+# release signing (symlink to the pass keystore)
+/app/release.keystore
