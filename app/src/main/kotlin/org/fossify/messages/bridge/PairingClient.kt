@@ -204,6 +204,7 @@ object PairingClient {
         return PairingHttp.normalizeUrl(url)
     }
 
+    // Discovery is optional: any network or payload failure simply hides the auto-detection.
     @Suppress("TooGenericExceptionCaught")
     private fun fetchWellKnown(hsUrl: String): String? {
         return try {
@@ -218,6 +219,7 @@ object PairingClient {
         }
     }
 
+    // A malformed well-known document just means "no bridge advertised"; never throw.
     @Suppress("TooGenericExceptionCaught")
     private fun decodeWellKnown(body: String?): String? {
         if (body == null) {
@@ -290,6 +292,7 @@ object PairingClient {
         }
     }
 
+    // Any decode failure must become a generic PairingException, not leak serializer internals.
     @Suppress("TooGenericExceptionCaught")
     private fun <T> decode(body: String, format: kotlinx.serialization.KSerializer<T>): T {
         if (body.isEmpty()) {

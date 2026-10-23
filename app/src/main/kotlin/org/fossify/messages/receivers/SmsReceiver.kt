@@ -4,7 +4,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.provider.Telephony
-import android.util.Log
 import org.fossify.commons.extensions.baseConfig
 import org.fossify.commons.extensions.getMyContactsCursor
 import org.fossify.commons.extensions.isNumberBlocked
@@ -139,19 +138,16 @@ class SmsReceiver : BroadcastReceiver() {
 
         context.messagesDB.insertOrUpdate(message)
 
-        try {
-            BridgeEvents.onSmsReceived(
-                context = context,
-                rowId = newMessageId,
-                threadId = threadId,
-                subId = subscriptionId,
-                sender = address,
-                body = body,
-                timestampMs = date,
-            )
-        } catch (e: Exception) {
-            Log.e("SmsReceiver", "failed to emit bridge event", e)
-        }
+        // BridgeEvents.onSmsReceived is documented to never throw; it logs its own failures.
+        BridgeEvents.onSmsReceived(
+            context = context,
+            rowId = newMessageId,
+            threadId = threadId,
+            subId = subscriptionId,
+            sender = address,
+            body = body,
+            timestampMs = date,
+        )
 
         if (context.shouldUnarchive()) {
             context.updateConversationArchivedStatus(threadId, false)

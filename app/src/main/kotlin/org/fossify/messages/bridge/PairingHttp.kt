@@ -44,7 +44,6 @@ internal object PairingHttp {
      * Performs one JSON request. Throws [PairingException] on non-2xx
      * responses, keeping the error code and message of the API. Blocking.
      */
-    @Suppress("TooGenericExceptionCaught")
     fun requestJson(
         url: String,
         method: String,
@@ -125,6 +124,7 @@ internal object PairingHttp {
         }
     }
 
+    // Error payloads are best-effort: any parse failure falls back to a synthetic HTTP error.
     @Suppress("TooGenericExceptionCaught")
     private fun parseHttpError(status: Int, text: String): PairingException {
         val parsed = try {

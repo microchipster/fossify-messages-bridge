@@ -96,6 +96,7 @@ class PairingActivity : SimpleActivity() {
         }
     }
 
+    // Scanner startup failures are shown as a toast instead of crashing the pairing screen.
     @Suppress("TooGenericExceptionCaught")
     private fun scanQrCode() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {

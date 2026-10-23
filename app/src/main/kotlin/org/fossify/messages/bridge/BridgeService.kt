@@ -34,10 +34,14 @@ import org.fossify.messages.helpers.NOTIFICATION_CHANNEL_ID
  * stored in the `bridge_token` preference and written to logcat so it can be
  * retrieved with `adb logcat`.
  */
+// The foreground service must never crash the app or the settings screen, so every lifecycle failure is contained.
+@Suppress("TooGenericExceptionCaught")
 class BridgeService : Service() {
     companion object {
         private const val TAG = "BridgeService"
         private const val NOTIFICATION_ID = 8391
+        private const val MIN_PORT = 1024
+        private const val MAX_PORT = 65535
 
         /**
          * Starts or stops the service according to the current preferences.
@@ -89,7 +93,7 @@ class BridgeService : Service() {
             return START_NOT_STICKY
         }
 
-        val port = config.bridgePort.coerceIn(1024, 65535)
+        val port = config.bridgePort.coerceIn(MIN_PORT, MAX_PORT)
         val token = config.getOrCreateToken()
         startAsForeground(port, bridgeEnabled)
 

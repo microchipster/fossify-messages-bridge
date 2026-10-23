@@ -26,6 +26,7 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
         private const val BRIDGE_TOKEN = "bridge_token"
         private const val BRIDGE_PORT = "bridge_port"
         private const val BRIDGE_DEVICE_ID = "bridge_device_id"
+        private const val TOKEN_RANDOM_BYTES = 16
 
         fun newInstance(context: Context) = BridgeConfig(context)
     }
@@ -70,7 +71,7 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
             return existing
         }
 
-        val bytes = ByteArray(16)
+        val bytes = ByteArray(TOKEN_RANDOM_BYTES)
         SecureRandom().nextBytes(bytes)
         val token = bytes.joinToString("") { "%02x".format(it) }
         bridgeToken = token

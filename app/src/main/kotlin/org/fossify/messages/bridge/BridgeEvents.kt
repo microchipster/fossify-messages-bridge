@@ -55,6 +55,8 @@ data class BridgeEventsPage(
  * whenever it receives `reset = true` (cursor fell out of the retained
  * window).
  */
+// Event emission is best-effort: receivers must keep working even if a bridge event cannot be built.
+@Suppress("TooGenericExceptionCaught")
 object BridgeEvents {
     const val TYPE_MESSAGE_NEW = "message.new"
     const val TYPE_MESSAGE_UPDATED = "message.updated"
@@ -68,26 +70,6 @@ object BridgeEvents {
     private val hasEvents = lock.newCondition()
     private val buffer = ArrayDeque<BridgeEvent>()
     private var sequence = 0L
-
-    /** Formats a wire message id: `sms:<sub_id>:<row_id>` / `mms:<sub_id>:<row_id>`. */
-    fun messageId(kind: String, subId: Int, rowId: Long): String {
-        return "$kind:$subId:$rowId"
-    }
-
-    /** Splits a wire message id, returning null when it is malformed. */
-    fun parseMessageId(messageId: String): Triple<String, Int, Long>? {
-        val parts = messageId.split(":")
-        if (parts.size != 3) {
-            return null
-        }
-        val kind = parts[0]
-        if (kind != "sms" && kind != "mms") {
-            return null
-        }
-        val subId = parts[1].toIntOrNull() ?: return null
-        val rowId = parts[2].toLongOrNull() ?: return null
-        return Triple(kind, subId, rowId)
-    }
 
     fun cursor(): Long = lock.withLock { sequence }
 
@@ -153,7 +135,7 @@ object BridgeEvents {
             append(
                 BridgeEvent(
                     type = TYPE_MESSAGE_NEW,
-                    messageId = messageId("sms", normalizeSubId(subId), rowId),
+                    messageId = BridgeMessageIds.format("sms", normalizeSubId(subId), rowId),
                     threadId = threadId,
                     subId = normalizeSubId(subId),
                     timestampMs = timestampMs,
@@ -189,7 +171,7 @@ object BridgeEvents {
             append(
                 BridgeEvent(
                     type = TYPE_MESSAGE_NEW,
-                    messageId = messageId("mms", normalizeSubId(subId), rowId),
+                    messageId = BridgeMessageIds.format("mms", normalizeSubId(subId), rowId),
                     threadId = threadId,
                     subId = normalizeSubId(subId),
                     timestampMs = timestampMs,
@@ -224,7 +206,7 @@ object BridgeEvents {
             append(
                 BridgeEvent(
                     type = TYPE_MESSAGE_NEW,
-                    messageId = if (rowId > 0) messageId(kind, normalizeSubId(subId), rowId) else "",
+                    messageId = if (rowId > 0) BridgeMessageIds.format(kind, normalizeSubId(subId), rowId) else "",
                     threadId = threadId,
                     subId = normalizeSubId(subId),
                     timestampMs = timestampMs,
