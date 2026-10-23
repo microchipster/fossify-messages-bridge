@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/pairing_coordinator"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <org.fossify.commons.views.MyAppBarLayout
+        android:id="@+id/pairing_appbar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/pairing_toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/color_primary"
+            app:title="@string/bridge_pairing"
+            app:titleTextAppearance="@style/AppTheme.ActionBar.TitleTextStyle" />
+
+    </org.fossify.commons.views.MyAppBarLayout>
+
+    <androidx.core.widget.NestedScrollView
+        android:id="@+id/pairing_scrollview"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:scrollbars="none"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+        <LinearLayout
+            android:id="@+id/pairing_wrapper"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="@dimen/normal_margin">
+
+            <org.fossify.commons.views.MyTextView
+                android:id="@+id/pairing_instructions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingBottom="@dimen/activity_margin"
+                android:text="@string/bridge_pairing_instructions" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pairing_scan"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/activity_margin"
+                android:text="@string/bridge_pairing_scan_qr" />
+
+            <org.fossify.commons.views.MyTextInputLayout
+                android:id="@+id/pairing_payload_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/bridge_pairing_payload"
+                app:helperText="@string/bridge_pairing_payload_hint"
+                app:helperTextEnabled="true">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/pairing_payload"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textUri"
+                    android:maxLines="2"
+                    android:textCursorDrawable="@null" />
+
+            </org.fossify.commons.views.MyTextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pairing_use_payload"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="@dimen/activity_margin"
+                android:text="@string/bridge_pairing_use_payload" />
+
+            <org.fossify.commons.views.MyTextInputLayout
+                android:id="@+id/pairing_homeserver_url_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/bridge_pairing_homeserver_url">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/pairing_homeserver_url"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textUri"
+                    android:maxLines="1"
+                    android:textCursorDrawable="@null" />
+
+            </org.fossify.commons.views.MyTextInputLayout>
+
+            <org.fossify.commons.views.MyTextInputLayout
+                android:id="@+id/pairing_bridge_url_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/bridge_pairing_bridge_url"
+                app:helperText="@string/bridge_pairing_bridge_url_helper"
+                app:helperTextEnabled="true">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/pairing_bridge_url"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="textUri"
+                    android:maxLines="1"
+                    android:textCursorDrawable="@null" />
+
+            </org.fossify.commons.views.MyTextInputLayout>
+
+            <org.fossify.commons.views.MyTextInputLayout
+                android:id="@+id/pairing_code_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="@string/bridge_pairing_code">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/pairing_code"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:inputType="text"
+                    android:maxLength="16"
+                    android:maxLines="1"
+                    android:textCursorDrawable="@null" />
+
+            </org.fossify.commons.views.MyTextInputLayout>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pairing_pair"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/activity_margin"
+                android:text="@string/bridge_pairing_pair" />
+
+            <ProgressBar
+                android:id="@+id/pairing_progress"
+                style="?android:attr/progressBarStyleHorizontal"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/small_margin"
+                android:indeterminate="true"
+                android:visibility="gone" />
+
+            <org.fossify.commons.views.MyTextView
+                android:id="@+id/pairing_status"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/small_margin"
+                android:text="@string/bridge_pairing_status_not_paired"
+                android:textStyle="italic" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/pairing_unpair"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="@dimen/activity_margin"
+                android:text="@string/bridge_pairing_unpair"
+                android:visibility="gone" />
+
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

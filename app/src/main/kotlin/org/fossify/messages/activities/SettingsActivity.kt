@@ -30,6 +30,8 @@ import org.fossify.commons.helpers.isQPlus
 import org.fossify.commons.helpers.isTiramisuPlus
 import org.fossify.commons.models.RadioItem
 import org.fossify.messages.R
+import org.fossify.messages.bridge.PairingActivity
+import org.fossify.messages.bridge.PairingStore
 import org.fossify.messages.databinding.ActivitySettingsBinding
 import org.fossify.messages.dialogs.ExportMessagesDialog
 import org.fossify.messages.extensions.config
@@ -119,6 +121,7 @@ class SettingsActivity : SimpleActivity() {
         setupAppPasswordProtection()
         setupMessagesExport()
         setupMessagesImport()
+        setupBridgePairing()
         updateTextColors(binding.settingsNestedScrollview)
 
         if (
@@ -152,6 +155,18 @@ class SettingsActivity : SimpleActivity() {
     private fun setupMessagesImport() {
         binding.settingsImportMessagesHolder.setOnClickListener {
             getContent.launch(messageImportFileTypes.toTypedArray())
+        }
+    }
+
+    private fun setupBridgePairing() = binding.apply {
+        val store = PairingStore.newInstance(this@SettingsActivity)
+        settingsBridgePairing.text = if (store.isPaired) {
+            store.pairedUser.ifEmpty { getString(R.string.bridge_pairing_status_paired_no_user, store.bridgeBaseUrl) }
+        } else {
+            getString(R.string.bridge_pairing_status_not_paired)
+        }
+        settingsBridgePairingHolder.setOnClickListener {
+            startActivity(Intent(this@SettingsActivity, PairingActivity::class.java))
         }
     }
 
