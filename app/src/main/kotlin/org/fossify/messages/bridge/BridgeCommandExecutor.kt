@@ -48,6 +48,7 @@ internal class BridgeCommandExecutor(private val context: Context, private val o
                 timestampMs = if (command.upToMs > 0) command.upToMs else System.currentTimeMillis(),
                 isMms = false,
                 hasAttachment = false,
+                recipients = BridgeQueries.threadRecipients(context, command.threadId) ?: emptyList(),
             )
         )
         outbox.enqueue(ackEvent(command, null))
