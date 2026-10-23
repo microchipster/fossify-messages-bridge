@@ -41,6 +41,10 @@ data class BridgeEvent(
     // Full message payload. The pairing transport must carry it because the
     // bridge cannot fetch messages (or MMS parts) from a NATed phone.
     val message: BridgeMessage? = null,
+    // Current participant list of the thread (thread.updated only). The bridge
+    // has no thread list endpoint for paired phones, so this is how it
+    // refreshes a portal's stored participants.
+    val recipients: List<String> = emptyList(),
     // Command sequence this event acknowledges (acks only).
     @SerialName("command_seq") val commandSeq: Long = 0,
 )
