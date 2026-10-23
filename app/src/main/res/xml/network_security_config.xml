@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+SPDX-FileCopyrightText: 2026 microchipster
+
+SPDX-License-Identifier: GPL-3.0-or-later
+-->
+<!--
+Everything defaults to the platform policy (no cleartext). Plain HTTP is only
+allowed for loopback, so the pairing flow can be exercised against a bridge or
+agent running on the same machine during development.
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

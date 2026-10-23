@@ -3,6 +3,33 @@
     <string name="app_launcher_name">Messages Bridge</string>
     <string name="bridge_service_title">Messages Bridge</string>
     <string name="bridge_service_text">Bridge listening on port %1$d</string>
+    <string name="bridge_service_paired_text">Paired with %1$s</string>
+    <string name="bridge_service_paired_text_unknown">a Matrix bridge</string>
+    <!-- Bridge pairing -->
+    <string name="bridge_pairing">Bridge pairing</string>
+    <string name="bridge_pairing_instructions">Pair this phone with a Matrix bridge. Scan the QR code shown by the bridge bot (!sms login), paste the pairing payload, or type the homeserver URL and the pairing code manually.</string>
+    <string name="bridge_pairing_scan_qr">Scan QR code</string>
+    <string name="bridge_pairing_payload">Pairing payload</string>
+    <string name="bridge_pairing_payload_hint">smsmms://pair?hs=…&amp;b=…&amp;code=…</string>
+    <string name="bridge_pairing_use_payload">Use payload</string>
+    <string name="bridge_pairing_homeserver_url">Homeserver URL</string>
+    <string name="bridge_pairing_bridge_url">Bridge URL (optional)</string>
+    <string name="bridge_pairing_bridge_url_helper">Leave empty to discover it via the homeserver well-known</string>
+    <string name="bridge_pairing_code">Pairing code</string>
+    <string name="bridge_pairing_pair">Pair</string>
+    <string name="bridge_pairing_unpair">Unpair this device</string>
+    <string name="bridge_pairing_status_not_paired">Not paired</string>
+    <string name="bridge_pairing_status_paired">Paired as %1$s via %2$s</string>
+    <string name="bridge_pairing_status_paired_no_user">Paired via %1$s</string>
+    <string name="bridge_pairing_in_progress">Pairing…</string>
+    <string name="bridge_pairing_failed">Pairing failed: %1$s</string>
+    <string name="bridge_pairing_unpaired">This device is no longer paired</string>
+    <string name="bridge_pairing_payload_loaded">Payload loaded, pairing…</string>
+    <string name="bridge_pairing_missing_code">Enter the pairing code</string>
+    <string name="bridge_pairing_missing_hs_url">Enter the homeserver URL</string>
+    <string name="bridge_pairing_invalid_payload">This is not a valid pairing payload</string>
+    <string name="bridge_pairing_camera_denied">Camera permission is needed to scan the QR code</string>
+    <string name="bridge_pairing_scan_failed">Cannot open the QR scanner</string>
     <string name="type_a_message">Type a message…</string>
     <string name="message_not_sent_short">Message not sent</string>
     <string name="message_not_sent_touch_retry">Not sent. Touch to retry.</string>

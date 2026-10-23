@@ -149,6 +149,7 @@ dependencies {
     implementation(libs.androidx.documentfile)
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.ez.vcard)
+    implementation(libs.zxing.android.embedded)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.bundles.room)
     ksp(libs.androidx.room.compiler)
