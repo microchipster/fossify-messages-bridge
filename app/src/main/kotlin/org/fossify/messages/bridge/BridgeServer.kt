@@ -136,6 +136,10 @@ class BridgeServer(
 
     private fun route(request: HttpRequest): HttpResponse {
         return try {
+            if (request.method == "OPTIONS") {
+                // CORS-style preflight: no auth needed, no body.
+                return HttpResponse(204, "text/plain", ByteArray(0))
+            }
             if (!isAuthorized(request)) {
                 return errorResponse(401, "unauthorized", "missing or invalid bearer token")
             }
@@ -177,20 +181,9 @@ class BridgeServer(
     }
 
     private fun handleThread(threadId: Long): HttpResponse {
-        val recipients = BridgeQueries.threadRecipients(context, threadId)
+        val thread = BridgeQueries.thread(context, threadId)
             ?: throw HttpError(404, "not_found", "thread $threadId not found")
-        return jsonResponse(
-            200,
-            BridgeThread(
-                id = threadId,
-                subId = -1,
-                dateMs = 0,
-                messageCount = 0,
-                recipients = recipients,
-                read = false,
-                hasAttachment = false,
-            ),
-        )
+        return jsonResponse(200, thread)
     }
 
     private fun handleThreadMessages(threadId: Long, request: HttpRequest): HttpResponse {
@@ -371,18 +364,23 @@ class BridgeServer(
         val header = buildString {
             append("HTTP/1.1 ${response.status} ${statusText(response.status)}\r\n")
             append("Content-Type: ${response.contentType}\r\n")
-            append("Content-Length: ${response.body.size}\r\n")
+            if (response.status != 204) {
+                append("Content-Length: ${response.body.size}\r\n")
+            }
             append("Cache-Control: no-store\r\n")
             append("Connection: close\r\n")
             append("\r\n")
         }
         out.write(header.toByteArray(StandardCharsets.ISO_8859_1))
-        out.write(response.body)
+        if (response.status != 204 && response.body.isNotEmpty()) {
+            out.write(response.body)
+        }
         out.flush()
     }
 
     private fun statusText(status: Int): String = when (status) {
         200 -> "OK"
+        204 -> "No Content"
         400 -> "Bad Request"
         401 -> "Unauthorized"
         404 -> "Not Found"
