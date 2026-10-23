@@ -53,6 +53,7 @@ internal class BridgeCommandExecutor(private val context: Context, private val o
         outbox.enqueue(ackEvent(command, null))
     }
 
+    // An unexpected send failure is reported back to the bridge as a send.result error.
     @Suppress("TooGenericExceptionCaught")
     private fun executeSend(command: QueueCommand) {
         val sendId = command.sendId.ifBlank { "queue-${command.seq}" }

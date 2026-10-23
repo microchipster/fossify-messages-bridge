@@ -179,6 +179,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
             .apply()
     }
 
+    // Keystore/cipher failures must not break pairing; callers handle an empty result.
     @Suppress("TooGenericExceptionCaught")
     private fun wrapToken(token: String): String {
         if (token.isEmpty()) {
@@ -199,6 +200,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
         }
     }
 
+    // A missing Keystore entry or a corrupt payload means "not paired"; this must never throw.
     @Suppress("TooGenericExceptionCaught")
     private fun unwrapToken(wrapped: String): String {
         if (wrapped.isEmpty()) {

@@ -50,6 +50,7 @@ internal object BridgeHeartbeat {
      * timestamp. A rejected device token is rethrown, so the caller can clear
      * the pairing.
      */
+    // Heartbeat failures are logged except when the token was rejected, which the caller must handle.
     @Suppress("TooGenericExceptionCaught")
     fun sendIfDue(context: Context, store: PairingStore, token: String, lastHeartbeatMs: Long): Long {
         val now = System.currentTimeMillis()
@@ -82,6 +83,7 @@ internal object BridgeHeartbeat {
         return now
     }
 
+    // Battery state is cosmetic in the heartbeat; an unreadable value is reported as unknown.
     @Suppress("TooGenericExceptionCaught")
     private fun batteryPct(context: Context): Int {
         return try {

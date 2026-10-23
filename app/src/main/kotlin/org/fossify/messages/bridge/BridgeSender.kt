@@ -55,7 +55,12 @@ data class BridgeSendResponse(
 )
 
 /** A send failure that maps directly onto an agent API error response. */
-class BridgeSendException(val status: Int, val code: String, override val message: String) : Exception(message)
+class BridgeSendException(
+    val status: Int,
+    val code: String,
+    override val message: String,
+    cause: Throwable? = null,
+) : Exception(message, cause)
 
 /**
  * Send path of the bridge API.
@@ -65,6 +70,8 @@ class BridgeSendException(val status: Int, val code: String, override val messag
  * one text part, which fixes the upstream "N attachments become N separate MMS" bug; for
  * multi-recipient sends `Settings.group` is forced regardless of the UI preference.
  */
+// Klinker's transaction API declares `throws Exception` and send errors must map to bridge errors, not crashes.
+@Suppress("TooGenericExceptionCaught")
 object BridgeSender {
     private const val TAG = "BridgeSender"
     private const val RESOLVE_TIMEOUT_MS = 30_000L
@@ -75,41 +82,23 @@ object BridgeSender {
 
     fun send(context: Context, request: BridgeSendRequest): BridgeSendResponse {
         val sendId = request.sendId.ifBlank { "app-${System.currentTimeMillis()}" }
-
-        var recipients = request.recipients.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
-        if (recipients.isEmpty() && request.threadId > 0) {
-            recipients = BridgeQueries.threadRecipients(context, request.threadId).orEmpty()
-        }
-        if (recipients.isEmpty()) {
-            throw BridgeSendException(400, "unsupported", "no recipients given")
-        }
-        if (recipients.size > MAX_RECIPIENTS) {
-            throw BridgeSendException(501, "unsupported", "too many recipients (max $MAX_RECIPIENTS)")
-        }
+        val recipients = resolveRecipients(context, request)
         if (request.text.isEmpty() && request.attachments.isEmpty()) {
-            throw BridgeSendException(400, "unsupported", "message has no text and no attachments")
+            throw BridgeSendException(
+                BridgeHttpStatus.BAD_REQUEST,
+                "unsupported",
+                "message has no text and no attachments",
+            )
         }
 
         val subId = if (request.subId > 0) request.subId else Settings.DEFAULT_SUBSCRIPTION_ID
         val attachments = request.attachments.map { decodeAttachment(it) }
         val defaultSmsApp = BridgeQueries.isDefaultSmsApp(context)
-        val isMms = attachments.isNotEmpty() || recipients.size > 1 || (context.isLongMmsMessage(request.text) && defaultSmsApp)
+        val isMms = attachments.isNotEmpty() || recipients.size > 1 ||
+            (context.isLongMmsMessage(request.text) && defaultSmsApp)
         if (isMms && !defaultSmsApp) {
             // MMS send and provider outbox persistence need the default SMS role.
-            if (attachments.isNotEmpty()) {
-                throw BridgeSendException(
-                    501,
-                    "mms_send_unsupported",
-                    "MMS sending requires this app to be the default SMS app",
-                )
-            }
-            if (recipients.size > 1) {
-                throw BridgeSendException(
-                    501,
-                    "unsupported",
-                    "group SMS requires this app to be the default SMS app (group MMS)",
-                )
-            }
+            rejectNonDefaultSmsMms(attachments, recipients)
         }
 
         val mms = isMms && defaultSmsApp
@@ -120,25 +109,78 @@ object BridgeSender {
         }
     }
 
+    /** Uses the explicit recipients, falls back to the thread participants, and enforces both recipient limits. */
+    private fun resolveRecipients(context: Context, request: BridgeSendRequest): List<String> {
+        var recipients = request.recipients.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+        if (recipients.isEmpty() && request.threadId > 0) {
+            recipients = BridgeQueries.threadRecipients(context, request.threadId).orEmpty()
+        }
+        if (recipients.isEmpty()) {
+            throw BridgeSendException(BridgeHttpStatus.BAD_REQUEST, "unsupported", "no recipients given")
+        }
+        if (recipients.size > MAX_RECIPIENTS) {
+            throw BridgeSendException(
+                BridgeHttpStatus.NOT_IMPLEMENTED,
+                "unsupported",
+                "too many recipients (max $MAX_RECIPIENTS)",
+            )
+        }
+        return recipients
+    }
+
+    /** Rejects an MMS or group send early while the app is not the default SMS app. */
+    private fun rejectNonDefaultSmsMms(attachments: List<OutgoingAttachment>, recipients: List<String>) {
+        if (attachments.isNotEmpty()) {
+            throw BridgeSendException(
+                BridgeHttpStatus.NOT_IMPLEMENTED,
+                "mms_send_unsupported",
+                "MMS sending requires this app to be the default SMS app",
+            )
+        }
+        if (recipients.size > 1) {
+            throw BridgeSendException(
+                BridgeHttpStatus.NOT_IMPLEMENTED,
+                "unsupported",
+                "group SMS requires this app to be the default SMS app (group MMS)",
+            )
+        }
+    }
+
     private class OutgoingAttachment(val bytes: ByteArray, val contentType: String, val fileName: String)
 
     private fun decodeAttachment(attachment: BridgeSendAttachment): OutgoingAttachment {
         val bytes = try {
             Base64.decode(attachment.base64, Base64.DEFAULT)
         } catch (_: IllegalArgumentException) {
-            throw BridgeSendException(400, "unsupported", "attachment '${attachment.fileName}' is not valid base64")
+            throw BridgeSendException(
+                BridgeHttpStatus.BAD_REQUEST,
+                "unsupported",
+                "attachment '${attachment.fileName}' is not valid base64",
+            )
         }
-        if (bytes.isEmpty()) {
-            throw BridgeSendException(400, "unsupported", "attachment '${attachment.fileName}' is empty")
-        }
-        if (bytes.size > MAX_ATTACHMENT_BYTES) {
-            throw BridgeSendException(413, "too_large", "attachment '${attachment.fileName}' is too large")
-        }
+        checkAttachmentSize(attachment, bytes)
         return OutgoingAttachment(
             bytes = bytes,
             contentType = attachment.contentType.ifBlank { "application/octet-stream" },
             fileName = attachment.fileName.ifBlank { "attachment" },
         )
+    }
+
+    private fun checkAttachmentSize(attachment: BridgeSendAttachment, bytes: ByteArray) {
+        if (bytes.isEmpty()) {
+            throw BridgeSendException(
+                BridgeHttpStatus.BAD_REQUEST,
+                "unsupported",
+                "attachment '${attachment.fileName}' is empty",
+            )
+        }
+        if (bytes.size > MAX_ATTACHMENT_BYTES) {
+            throw BridgeSendException(
+                BridgeHttpStatus.TOO_LARGE,
+                "too_large",
+                "attachment '${attachment.fileName}' is too large",
+            )
+        }
     }
 
     private fun sendSms(
@@ -152,7 +194,11 @@ object BridgeSender {
         val effectiveSubId = if (subId > 0) subId else settings.subscriptionId
         val partsSent = SmsMessage.calculateLength(text, false).first().coerceAtLeast(1)
         if (partsSent > MAX_SMS_PARTS) {
-            throw BridgeSendException(413, "too_long", "message needs $partsSent SMS parts (max $MAX_SMS_PARTS)")
+            throw BridgeSendException(
+                BridgeHttpStatus.TOO_LARGE,
+                "too_long",
+                "message needs $partsSent SMS parts (max $MAX_SMS_PARTS)",
+            )
         }
         val threadId = context.getThreadId(address)
         val markId = maxRowId(context, Sms.CONTENT_URI)
@@ -166,20 +212,26 @@ object BridgeSender {
             )
         } catch (e: Exception) {
             Log.e(TAG, "sending SMS failed", e)
-            throw BridgeSendException(502, "send_failed", e.message ?: "sending SMS failed")
+            throw BridgeSendException(BridgeHttpStatus.BAD_GATEWAY, "send_failed", e.message ?: "sending SMS failed", e)
         }
 
         val row = resolveNewRow(context, Sms.CONTENT_URI, markId, threadId)
         val response = if (row != null) {
             BridgeSendResponse(
                 sendId = sendId,
-                messageId = BridgeEvents.messageId("sms", BridgeEvents.normalizeSubId(row.subId), row.id),
+                messageId = BridgeMessageIds.format("sms", BridgeEvents.normalizeSubId(row.subId), row.id),
                 threadId = row.threadId,
                 partsSent = partsSent,
                 pending = false,
             )
         } else {
-            BridgeSendResponse(sendId = sendId, messageId = "", threadId = threadId, partsSent = partsSent, pending = true)
+            BridgeSendResponse(
+                sendId = sendId,
+                messageId = "",
+                threadId = threadId,
+                partsSent = partsSent,
+                pending = true,
+            )
         }
 
         BridgeEvents.onMessageSent(
@@ -225,7 +277,7 @@ object BridgeSender {
             transaction.sendNewMessage(message)
         } catch (e: Exception) {
             Log.e(TAG, "sending MMS failed", e)
-            throw BridgeSendException(502, "send_failed", e.message ?: "sending MMS failed")
+            throw BridgeSendException(BridgeHttpStatus.BAD_GATEWAY, "send_failed", e.message ?: "sending MMS failed", e)
         }
 
         val row = resolveNewRow(context, Mms.CONTENT_URI, markId, threadId)
@@ -233,13 +285,19 @@ object BridgeSender {
         val response = if (row != null) {
             BridgeSendResponse(
                 sendId = sendId,
-                messageId = BridgeEvents.messageId("mms", BridgeEvents.normalizeSubId(row.subId), row.id),
+                messageId = BridgeMessageIds.format("mms", BridgeEvents.normalizeSubId(row.subId), row.id),
                 threadId = row.threadId,
                 partsSent = partsSent,
                 pending = false,
             )
         } else {
-            BridgeSendResponse(sendId = sendId, messageId = "", threadId = threadId, partsSent = partsSent, pending = true)
+            BridgeSendResponse(
+                sendId = sendId,
+                messageId = "",
+                threadId = threadId,
+                partsSent = partsSent,
+                pending = true,
+            )
         }
 
         BridgeEvents.onMessageSent(
@@ -290,6 +348,7 @@ object BridgeSender {
     }
 
     private fun queryNewRow(context: Context, uri: Uri, minId: Long, threadId: Long): ResolvedRow? {
+        var candidate: ResolvedRow? = null
         try {
             context.contentResolver.query(
                 uri,
@@ -299,14 +358,12 @@ object BridgeSender {
                 "_id DESC LIMIT 1",
             )?.use { cursor ->
                 if (cursor.moveToFirst()) {
-                    val row = ResolvedRow(cursor.getLong(0), cursor.getLong(1), cursor.getInt(2))
-                    if (threadId <= 0 || row.threadId == threadId) {
-                        return row
-                    }
+                    candidate = ResolvedRow(cursor.getLong(0), cursor.getLong(1), cursor.getInt(2))
                 }
             }
         } catch (_: Exception) {
         }
-        return null
+        val row = candidate
+        return if (row != null && (threadId <= 0 || row.threadId == threadId)) row else null
     }
 }
