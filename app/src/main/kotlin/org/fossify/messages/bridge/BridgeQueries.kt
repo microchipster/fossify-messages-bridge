@@ -175,6 +175,12 @@ object BridgeQueries {
         } catch (_: Exception) {
             ""
         }
+        val isDefaultSmsApp = defaultSmsApp == context.packageName
+        val capabilities = mutableListOf("threads", "messages", "mms-parts", "events", "subscriptions", "send-sms")
+        if (isDefaultSmsApp) {
+            capabilities.add("mark-read")
+            capabilities.add("send-mms")
+        }
 
         return BridgeHealth(
             ok = true,
@@ -189,16 +195,23 @@ object BridgeQueries {
             backend = BridgeBackendInfo(
                 read = "content-provider",
                 sendSms = "app",
-                sendMms = true,
-                canMarkRead = true,
+                sendMms = isDefaultSmsApp,
+                canMarkRead = isDefaultSmsApp,
                 root = false,
                 defaultSmsApp = defaultSmsApp,
             ),
             defaultSmsApp = defaultSmsApp,
-            capabilities = listOf(
-                "threads", "messages", "mms-parts", "mark-read", "send-sms", "send-mms", "events", "subscriptions"
-            ),
+            capabilities = capabilities,
         )
+    }
+
+    /** True while this fork holds the default SMS role, required for MMS send and read-state writeback. */
+    fun isDefaultSmsApp(context: Context): Boolean {
+        return try {
+            Sms.getDefaultSmsPackage(context) == context.packageName
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun subscriptions(context: Context): List<BridgeSubscription> {
@@ -283,6 +296,30 @@ object BridgeQueries {
                 unreadCount = conversation.unreadCount,
             )
         }
+    }
+
+    /** Returns one full thread object (participants, counts, read state), or null when unknown. */
+    fun thread(context: Context, threadId: Long): BridgeThread? {
+        val conversation = try {
+            context.getConversations(threadId).firstOrNull()
+        } catch (_: Exception) {
+            null
+        } ?: return null
+
+        val participants = threadRecipients(context, threadId)
+            ?: listOfNotNull(conversation.phoneNumber.takeIf { it.isNotBlank() })
+        val extra = threadExtras(context)[threadId]
+        return BridgeThread(
+            id = conversation.threadId,
+            subId = -1,
+            dateMs = conversation.date * 1000L,
+            messageCount = extra?.first ?: 0,
+            recipients = participants,
+            snippet = conversation.snippet,
+            read = conversation.read,
+            hasAttachment = extra?.second ?: false,
+            unreadCount = conversation.unreadCount,
+        )
     }
 
     /** Returns the canonical participant set of a thread, or null when the thread is unknown. */
@@ -468,7 +505,7 @@ object BridgeQueries {
         afterMs: Long,
         limit: Int,
     ): List<SmsRow> {
-        val conditions = StringBuilder("${Sms.THREAD_ID} = ?")
+        val conditions = StringBuilder("${Sms.THREAD_ID} = ? AND ${Sms.TYPE} != ${Sms.MESSAGE_TYPE_DRAFT}")
         val args = arrayListOf(threadId.toString())
         if (beforeMs > 0) {
             conditions.append(" AND ${Sms.DATE} < ?")
@@ -512,7 +549,7 @@ object BridgeQueries {
         afterMs: Long,
         limit: Int,
     ): List<MmsRow> {
-        val conditions = StringBuilder("${Mms.THREAD_ID} = ? AND $MMS_NOT_USER_VISIBLE")
+        val conditions = StringBuilder("${Mms.THREAD_ID} = ? AND ${Mms.MESSAGE_BOX} != ${Mms.MESSAGE_BOX_DRAFTS} AND $MMS_NOT_USER_VISIBLE")
         val args = arrayListOf(threadId.toString())
         if (beforeMs > 0) {
             conditions.append(" AND ${Mms.DATE} < ?")
@@ -812,6 +849,11 @@ object BridgeQueries {
     }
 
     private fun deviceSerial(context: Context): String {
+        val configured = BridgeConfig.newInstance(context).bridgeDeviceId
+        if (configured.isNotBlank()) {
+            return configured
+        }
+
         val serial = try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) Build.getSerial() else Build.SERIAL
         } catch (_: Exception) {
