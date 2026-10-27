@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cdn_media_holder"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical">
+
+    <LinearLayout
+        android:id="@+id/cdn_media_loading"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/section_holder_stroke"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="@dimen/normal_margin">
+
+        <ProgressBar
+            android:id="@+id/cdn_media_progress"
+            style="?android:attr/progressBarStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content" />
+
+        <org.fossify.commons.views.MyTextView
+            android:id="@+id/cdn_media_loading_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="@dimen/medium_margin"
+            android:text="@string/cdn_render_loading" />
+    </LinearLayout>
+
+    <FrameLayout
+        android:id="@+id/cdn_media_preview"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:visibility="gone">
+
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/cdn_media_image"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:adjustViewBounds="true"
+            app:shapeAppearanceOverlay="@style/roundedImageView"
+            tools:ignore="ContentDescription" />
+
+        <ImageView
+            android:id="@+id/cdn_media_play"
+            android:layout_width="@dimen/play_outline_size"
+            android:layout_height="@dimen/play_outline_size"
+            android:layout_gravity="center"
+            android:src="@drawable/ic_play_outline_vector"
+            android:visibility="gone"
+            tools:ignore="ContentDescription" />
+    </FrameLayout>
+
+    <LinearLayout
+        android:id="@+id/cdn_media_content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone" />
+
+    <org.fossify.commons.views.MyTextView
+        android:id="@+id/cdn_media_error"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@drawable/section_holder_stroke"
+        android:padding="@dimen/normal_margin"
+        android:text="@string/cdn_render_failed"
+        android:visibility="gone" />
+</LinearLayout>

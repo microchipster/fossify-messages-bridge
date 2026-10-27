@@ -37,6 +37,7 @@ import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.copyToClipboard
 import org.fossify.commons.extensions.formatDateOrTime
 import org.fossify.commons.extensions.getContrastColor
+import org.fossify.commons.extensions.getMyFileUri
 import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.commons.extensions.getTextSize
 import org.fossify.commons.extensions.getTimeFormat
@@ -52,10 +53,18 @@ import org.fossify.messages.activities.NewConversationActivity
 import org.fossify.messages.activities.SimpleActivity
 import org.fossify.messages.activities.ThreadActivity
 import org.fossify.messages.activities.VCardViewerActivity
+import org.fossify.messages.bridge.CdnDiscovery
+import org.fossify.messages.bridge.CdnLink
+import org.fossify.messages.bridge.CdnLinkDetector
+import org.fossify.messages.bridge.CdnLinkRef
+import org.fossify.messages.bridge.CdnMediaRenderer
+import org.fossify.messages.bridge.CdnRenderResult
+import org.fossify.messages.bridge.CdnRenderStateMachine
 import org.fossify.messages.databinding.ItemAttachmentDocumentBinding
 import org.fossify.messages.databinding.ItemAttachmentImageBinding
 import org.fossify.messages.databinding.ItemAttachmentAudioBinding
 import org.fossify.messages.databinding.ItemAttachmentVcardBinding
+import org.fossify.messages.databinding.ItemCdnMediaBinding
 import org.fossify.messages.databinding.ItemMessageBinding
 import org.fossify.messages.databinding.ItemThreadDateTimeBinding
 import org.fossify.messages.databinding.ItemThreadErrorBinding
@@ -86,6 +95,9 @@ import org.fossify.messages.helpers.generateStableId
 import org.fossify.messages.helpers.setupAudio
 import org.fossify.messages.helpers.setupDocumentPreview
 import org.fossify.messages.helpers.setupVCardPreview
+import org.fossify.messages.helpers.showCdnError
+import org.fossify.messages.helpers.showCdnLoading
+import org.fossify.messages.helpers.showCdnMedia
 import org.fossify.messages.models.Attachment
 import org.fossify.messages.models.Message
 import org.fossify.messages.models.ThreadItem
@@ -382,12 +394,15 @@ class ThreadAdapter(
     }
 
     private fun setupView(holder: ViewHolder, view: View, message: Message) {
+        val threadHolder = holder as ThreadViewHolder
         ItemMessageBinding.bind(view).apply {
+            val cdnRef = detectCdnLink(message)
+            val displayBody = if (cdnRef == null) message.body else CdnLinkDetector.displayBody(message.body, cdnRef)
             threadMessageHolder.isSelected = selectedKeys.contains(message.getSelectionKey())
             threadMessageBody.apply {
-                text = message.body
+                text = displayBody
                 setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize)
-                beVisibleIf(message.body.isNotEmpty())
+                beVisibleIf(displayBody.isNotEmpty())
                 setOnLongClickListener {
                     holder.viewLongClicked()
                     true
@@ -411,24 +426,98 @@ class ThreadAdapter(
                 setupSentMessageView(messageBinding = this, message = message)
             }
 
-            threadMessageAttachmentsHolder.removeAllViews()
-            if (message.attachment?.attachments?.isNotEmpty() == true) {
-                threadMessageAttachmentsHolder.beVisible()
-                for (attachment in message.attachment.attachments) {
-                    val mimetype = attachment.mimetype
-                    when {
-                        mimetype.isImageMimeType() || mimetype.isVideoMimeType() -> setupImageView(holder, binding = this, message, attachment)
-                        mimetype.isPlayableAudioMimeType() ->
-                            setupAudioView(holder, threadMessageAttachmentsHolder, message, attachment)
-                        mimetype.isVCardMimeType() -> setupVCardView(holder, threadMessageAttachmentsHolder, message, attachment)
-                        else -> setupFileView(holder, threadMessageAttachmentsHolder, message, attachment)
-                    }
+            setupThreadAttachments(threadHolder, this, message, cdnRef)
+        }
+    }
 
-                    threadMessagePlayOutline.beVisibleIf(mimetype.startsWith("video/"))
+    /** MMS attachments and the inline file card share the attachments holder. */
+    private fun setupThreadAttachments(holder: ThreadViewHolder, binding: ItemMessageBinding, message: Message, cdnRef: CdnLinkRef?) {
+        val attachments = message.attachment?.attachments.orEmpty()
+        binding.threadMessageAttachmentsHolder.removeAllViews()
+        if (attachments.isNotEmpty()) {
+            binding.threadMessageAttachmentsHolder.beVisible()
+            for (attachment in attachments) {
+                val mimetype = attachment.mimetype
+                when {
+                    mimetype.isImageMimeType() || mimetype.isVideoMimeType() ->
+                        setupImageView(holder, binding = binding, message, attachment)
+
+                    mimetype.isPlayableAudioMimeType() ->
+                        setupAudioView(holder, binding.threadMessageAttachmentsHolder, message, attachment)
+
+                    mimetype.isVCardMimeType() ->
+                        setupVCardView(holder, binding.threadMessageAttachmentsHolder, message, attachment)
+
+                    else -> setupFileView(holder, binding.threadMessageAttachmentsHolder, message, attachment)
                 }
+
+                binding.threadMessagePlayOutline.beVisibleIf(mimetype.startsWith("video/"))
+            }
+        } else {
+            binding.threadMessagePlayOutline.beGone()
+        }
+
+        if (cdnRef != null) {
+            binding.threadMessageAttachmentsHolder.beVisible()
+            setupCdnMediaView(holder, binding, message, cdnRef)
+        } else if (attachments.isEmpty()) {
+            binding.threadMessageAttachmentsHolder.beGone()
+        }
+    }
+
+    /** The first file-service link in the message text, if the app knows a base URL. */
+    private fun detectCdnLink(message: Message): CdnLinkRef? {
+        val body = message.body
+        // The cheap path prefix filter keeps the pairing store read off
+        // ordinary messages; only text that could carry a link pays for it.
+        if (body.isEmpty() || !body.contains(CdnLink.PATH_PREFIX)) {
+            return null
+        }
+        val baseUrls = CdnLinkDetector.baseUrls(CdnDiscovery.cachedBaseUrl(activity))
+        return CdnLinkDetector.detect(body, baseUrls)
+    }
+
+    /**
+     * Renders a detected file-service link as an inline card: a placeholder
+     * while the payload is fetched and decrypted, then a thumbnail or poster,
+     * the inline audio player or the attachment card. The card view is reused
+     * across binds and [CdnRenderStateMachine] drops an answer that was meant
+     * for the message this holder showed before.
+     */
+    private fun setupCdnMediaView(holder: ThreadViewHolder, binding: ItemMessageBinding, message: Message, ref: CdnLinkRef) {
+        val card = holder.cdnCard ?: ItemCdnMediaBinding.inflate(layoutInflater).also { holder.cdnCard = it }
+        binding.threadMessageAttachmentsHolder.addView(card.root)
+        card.cdnMediaHolder.beVisible()
+        card.root.setOnLongClickListener {
+            holder.viewLongClicked()
+            true
+        }
+
+        if (card.root.tag == ref.id) {
+            // The same link is already on screen; keep the loaded card as it is.
+            return
+        }
+        card.root.tag = ref.id
+        card.showCdnLoading(textColor = textColor, primaryColor = activity.getProperPrimaryColor())
+
+        val generation = holder.cdnState.rebind()
+        CdnMediaRenderer.load(activity, ref, maxChatBubbleWidth) { result ->
+            if (!holder.cdnState.complete(generation, result is CdnRenderResult.Ready)) {
+                return@load
+            }
+            if (result is CdnRenderResult.Ready) {
+                card.showCdnMedia(
+                    activity = activity,
+                    uri = activity.getMyFileUri(result.media.file),
+                    media = result.media,
+                    bitmap = result.bitmap,
+                    maxPreviewWidth = maxChatBubbleWidth,
+                    onSelect = { holder.viewClicked(message) },
+                    onLongClick = { holder.viewLongClicked() },
+                    isSelecting = { actModeCallback.isSelectable }
+                )
             } else {
-                threadMessageAttachmentsHolder.beGone()
-                threadMessagePlayOutline.beGone()
+                card.showCdnError()
             }
         }
     }
@@ -711,7 +800,11 @@ class ThreadAdapter(
         }
     }
 
-    inner class ThreadViewHolder(val binding: ViewBinding) : ViewHolder(binding.root)
+    inner class ThreadViewHolder(val binding: ViewBinding) : ViewHolder(binding.root) {
+        /** Inline file card, reused across binds; [cdnState] drops answers for older messages. */
+        internal var cdnCard: ItemCdnMediaBinding? = null
+        internal val cdnState = CdnRenderStateMachine()
+    }
 }
 
 private class ThreadItemDiffCallback : DiffUtil.ItemCallback<ThreadItem>() {

@@ -14,6 +14,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.serializer
 import org.fossify.messages.extensions.getFileSizeFromUri
+import java.io.ByteArrayOutputStream
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.HttpURLConnection
@@ -41,7 +42,7 @@ internal class CdnException(
 ) : Exception(message, cause)
 
 /**
- * Upload path of the bridge-hosted file service.
+ * Upload and download paths of the bridge-hosted file service.
  *
  * The attachment is encrypted with AES-256-GCM while it is streamed to the
  * bridge (nonce first, the tag is appended by [CipherOutputStream] on close),
@@ -49,6 +50,7 @@ internal class CdnException(
  * user allowed it and the bridge advertised a `cdn_base_url` over a paired
  * device token.
  */
+@Suppress("TooManyFunctions")
 internal object CdnClient {
     /** Local: no advertised base URL or no paired token. */
     const val CODE_NOT_CONFIGURED = "not_configured"
@@ -62,6 +64,12 @@ internal object CdnClient {
     /** Local: a 201 without a usable id. */
     const val CODE_INVALID_RESPONSE = "invalid_response"
 
+    /** Local: the downloaded ciphertext failed authentication or was corrupt. */
+    const val CODE_DECRYPT = "decrypt"
+
+    /** Remote: the file is gone (expired or revoked) or the link is wrong. */
+    const val CODE_NOT_FOUND = "not_found"
+
     /** Bridge: the ciphertext exceeds `cdn.max_file_bytes`. */
     const val ERROR_FILE_TOO_LARGE = "file_too_large"
 
@@ -74,9 +82,11 @@ internal object CdnClient {
     private const val TAG = "CdnClient"
     private const val CONNECT_TIMEOUT_MS = 30_000
     private const val UPLOAD_TIMEOUT_MS = 10 * 60 * 1000
+    private const val DOWNLOAD_TIMEOUT_MS = 60 * 1000
     private const val COPY_BUFFER_BYTES = 64 * 1024
     private const val CHUNK_BYTES = 64 * 1024
     private const val HTTP_CREATED = 201
+    private const val HTTP_NOT_FOUND = 404
     private const val HTTP_OK_MIN = 200
     private const val HTTP_OK_MAX = 299
 
@@ -135,6 +145,88 @@ internal object CdnClient {
         } finally {
             connection.disconnect()
         }
+    }
+
+    /**
+     * Downloads and decrypts one uploaded file; blocking, call it from a
+     * background thread and keep [maxBytes] in memory reach of the device.
+     *
+     * The fragment key is only used locally: the request goes to
+     * `/f/<id>/raw` without it (that endpoint needs no auth) and it is never
+     * logged. [maxBytes] bounds the ciphertext that is buffered, so a link to
+     * a huge payload fails with [CODE_TOO_LARGE] instead of an OOM.
+     */
+    @Suppress("TooGenericExceptionCaught")
+    fun download(baseUrl: String, id: String, keyFragment: String, maxBytes: Long): ByteArray {
+        val key = CdnCrypto.fragmentToKey(keyFragment)
+            ?: throw CdnException(CODE_INVALID_RESPONSE, message = "the link carries no valid file key")
+        val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}/$id/raw"
+        val connection = openDownloadConnection(url)
+        try {
+            return completeDownload(connection, key, maxBytes)
+        } catch (e: Exception) {
+            throw asDownloadFailure(e)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun completeDownload(connection: HttpURLConnection, key: ByteArray, maxBytes: Long): ByteArray {
+        val status = connection.responseCode
+        requireDownloadable(status)
+        val body = readBounded(connection, maxBytes)
+        return CdnCrypto.decrypt(key, body)
+            ?: throw CdnException(CODE_DECRYPT, status, "the downloaded file failed authentication")
+    }
+
+    /** Fails a download that did not return a success status. */
+    private fun requireDownloadable(status: Int) {
+        if (status == HTTP_NOT_FOUND) {
+            throw CdnException(CODE_NOT_FOUND, status, "the file is gone or the link is wrong")
+        }
+        if (status !in HTTP_OK_MIN..HTTP_OK_MAX) {
+            throw CdnException(CODE_NETWORK, status, "the file service rejected the download (HTTP $status)")
+        }
+    }
+
+    /** Keeps a [CdnException] and wraps everything else; the message has no key. */
+    private fun asDownloadFailure(e: Exception): CdnException {
+        if (e is CdnException) {
+            return e
+        }
+        Log.w(TAG, "file service download failed", e)
+        return CdnException(CODE_NETWORK, message = e.message ?: "file service download failed", cause = e)
+    }
+
+    private fun openDownloadConnection(url: String): HttpURLConnection {
+        val connection = URL(url).openConnection() as HttpURLConnection
+        connection.requestMethod = "GET"
+        connection.connectTimeout = CONNECT_TIMEOUT_MS
+        connection.readTimeout = DOWNLOAD_TIMEOUT_MS
+        connection.setRequestProperty("Accept", "application/octet-stream")
+        return connection
+    }
+
+    private fun readBounded(connection: HttpURLConnection, maxBytes: Long): ByteArray {
+        if (connection.contentLengthLong > maxBytes) {
+            throw CdnException(CODE_TOO_LARGE, message = "the file is too large to render inline")
+        }
+        val announced = connection.contentLengthLong
+        val output = if (announced in 1..maxBytes) ByteArrayOutputStream(announced.toInt()) else ByteArrayOutputStream()
+        val buffer = ByteArray(COPY_BUFFER_BYTES)
+        connection.inputStream.use { input ->
+            while (true) {
+                val read = input.read(buffer)
+                if (read == -1) {
+                    break
+                }
+                if (output.size().toLong() + read > maxBytes) {
+                    throw CdnException(CODE_TOO_LARGE, message = "the file is too large to render inline")
+                }
+                output.write(buffer, 0, read)
+            }
+        }
+        return output.toByteArray()
     }
 
     private fun requireService(baseUrl: String, token: String) {

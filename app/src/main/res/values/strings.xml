@@ -54,6 +54,9 @@
     <string name="cdn_error_unauthorized">The bridge rejected the device token, pair this phone again</string>
     <string name="cdn_error_quota">The bridge storage quota is full</string>
     <string name="cdn_error_network">Could not reach the bridge file service</string>
+    <string name="cdn_render_loading">Loading encrypted file…</string>
+    <string name="cdn_render_failed">Couldn\'t load</string>
+    <string name="cdn_render_attachment">Encrypted file</string>
     <!-- Bridge merging -->
     <string name="merge_as_group_chat">Merge as group chat</string>
     <string name="merge_threads_confirmation">Merge %1$d conversations into one group chat?\n\n%2$s\n\nMerged-away chats are tombstoned and stop receiving new messages there. The merge can only be undone from the bridge with !sms unmerge.</string>

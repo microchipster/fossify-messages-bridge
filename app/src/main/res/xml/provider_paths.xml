@@ -3,4 +3,5 @@
     <cache-path name="compressed_files" path="compressed/"/>
     <cache-path name="attachment_files" path="attachments/"/>
     <cache-path name="viewed_mms_parts" path="view/"/>
+    <cache-path name="cdn_files" path="cdn/"/>
 </paths>
