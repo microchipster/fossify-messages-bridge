@@ -210,6 +210,20 @@
             android:exported="false"
             android:foregroundServiceType="remoteMessaging" />
 
+        <!-- Token-gated control intents; inert while `control_enabled` is false. -->
+        <receiver
+            android:name=".control.ControlReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="org.fossify.messages.bridge.control.STATUS" />
+                <action android:name="org.fossify.messages.bridge.control.CONFIG" />
+                <action android:name="org.fossify.messages.bridge.control.PAIR" />
+                <action android:name="org.fossify.messages.bridge.control.UNPAIR" />
+                <action android:name="org.fossify.messages.bridge.control.SEND" />
+                <action android:name="org.fossify.messages.bridge.control.SYNC" />
+            </intent-filter>
+        </receiver>
+
         <receiver android:name=".receivers.SmsStatusSentReceiver" />
 
         <receiver android:name=".receivers.SmsStatusDeliveredReceiver" />

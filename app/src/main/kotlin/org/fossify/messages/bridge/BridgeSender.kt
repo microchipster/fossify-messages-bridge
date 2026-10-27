@@ -76,7 +76,9 @@ object BridgeSender {
     private const val TAG = "BridgeSender"
     private const val RESOLVE_TIMEOUT_MS = 30_000L
     private const val RESOLVE_POLL_INTERVAL_MS = 200L
-    private const val MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+
+    /** Attachment size limit shared with the control intents. */
+    const val MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
     private const val MAX_SMS_PARTS = 100
     private const val MAX_RECIPIENTS = 20
 

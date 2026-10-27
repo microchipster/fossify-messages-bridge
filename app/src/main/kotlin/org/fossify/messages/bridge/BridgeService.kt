@@ -30,9 +30,8 @@ import org.fossify.messages.helpers.NOTIFICATION_CHANNEL_ID
  * Foreground service hosting the bridge HTTP API.
  *
  * It is started while the `bridge_enabled` preference is true, on app start
- * and after boot/package updates. The bearer token is generated on first use,
- * stored in the `bridge_token` preference and written to logcat so it can be
- * retrieved with `adb logcat`.
+ * and after boot/package updates. The bearer token is generated on first use
+ * and stored in the `bridge_token` preference; it is never written to logs.
  */
 // The foreground service must never crash the app or the settings screen, so every lifecycle failure is contained.
 @Suppress("TooGenericExceptionCaught")
@@ -42,6 +41,12 @@ class BridgeService : Service() {
         private const val NOTIFICATION_ID = 8391
         private const val MIN_PORT = 1024
         private const val MAX_PORT = 65535
+
+        @Volatile
+        private var running = false
+
+        /** True while the foreground service is started; read by `control.STATUS`. */
+        fun isRunning(): Boolean = running
 
         /**
          * Starts or stops the service according to the current preferences.
@@ -80,6 +85,8 @@ class BridgeService : Service() {
     }
 
     private var server: BridgeServer? = null
+    private var serverPort = 0
+    private var serverToken = ""
     private var poller: PairingPoller? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -89,24 +96,19 @@ class BridgeService : Service() {
         val bridgeEnabled = config.bridgeEnabled
         val paired = PairingStore.newInstance(this).isPaired
         if (!bridgeEnabled && !paired) {
+            running = false
             stopSelf()
             return START_NOT_STICKY
         }
+        running = true
 
         val port = config.bridgePort.coerceIn(MIN_PORT, MAX_PORT)
-        val token = config.getOrCreateToken()
+        // Only the static-token agent mode uses this token; a phone that is
+        // merely paired through the QR flow does not need one.
+        val token = if (bridgeEnabled) config.getOrCreateToken() else ""
         startAsForeground(port, bridgeEnabled)
 
-        if (bridgeEnabled && server == null) {
-            val newServer = BridgeServer(this, token, port)
-            try {
-                newServer.start()
-                server = newServer
-                Log.i(TAG, "bridge HTTP API listening on 0.0.0.0:$port, bearer token: $token")
-            } catch (e: Exception) {
-                Log.e(TAG, "failed to start bridge HTTP API on port $port", e)
-            }
-        }
+        updateServer(bridgeEnabled, token, port)
 
         if (paired && poller == null) {
             poller = PairingPoller(this).also { it.start() }
@@ -121,11 +123,40 @@ class BridgeService : Service() {
     }
 
     override fun onDestroy() {
+        running = false
         poller?.stop()
         poller = null
         server?.stop()
         server = null
         super.onDestroy()
+    }
+
+    /**
+     * Starts, restarts or stops the HTTP API to match the current preferences
+     * (a port or token change requires a rebind).
+     */
+    private fun updateServer(bridgeEnabled: Boolean, token: String, port: Int) {
+        if (!bridgeEnabled) {
+            server?.stop()
+            server = null
+            return
+        }
+        if (server != null && serverPort == port && serverToken == token) {
+            return
+        }
+
+        server?.stop()
+        server = null
+        val newServer = BridgeServer(this, token, port)
+        try {
+            newServer.start()
+            server = newServer
+            serverPort = port
+            serverToken = token
+            Log.i(TAG, "bridge HTTP API listening on 0.0.0.0:$port")
+        } catch (e: Exception) {
+            Log.e(TAG, "failed to start bridge HTTP API on port $port", e)
+        }
     }
 
     private fun startAsForeground(port: Int, bridgeEnabled: Boolean) {

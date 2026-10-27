@@ -51,6 +51,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
         const val BRIDGE_QUEUE_CURSOR = "bridge_queue_cursor"
         const val BRIDGE_EVENTS_CURSOR = "bridge_events_cursor"
         const val BRIDGE_LAST_EVENT_PUSHED_MS = "bridge_last_event_pushed_ms"
+        const val BRIDGE_LAST_HEARTBEAT_MS = "bridge_last_heartbeat_ms"
         const val BRIDGE_PENDING_EVENTS = "bridge_pending_events"
         const val BRIDGE_RECENT_SEND_RESULTS = "bridge_recent_send_results"
 
@@ -70,11 +71,12 @@ class PairingStore(context: Context) : BaseConfig(context) {
         set(value) = prefs.edit().putString(BRIDGE_BASE_URL, value).apply()
 
     /**
-     * Device id the bridge knows this phone by.
+     * Device id the bridge knows this phone by, as acknowledged during pairing.
      *
-     * It is either a user-configured [`BridgeConfig.bridgeDeviceId`] (set it to
-     * the adb serial when both transports bridge the same phone) or an
-     * app-generated stable id.
+     * Normally the app-generated random id from [BridgeConfig.bridgeDeviceId];
+     * older app versions generated and stored it here, so it is also the
+     * adoption source for an already deployed phone. Never a hardware
+     * identifier.
      */
     var pairedDeviceId: String
         get() = prefs.getString(BRIDGE_PAIRED_DEVICE_ID, "").orEmpty()
@@ -99,6 +101,11 @@ class PairingStore(context: Context) : BaseConfig(context) {
     var lastEventPushedMs: Long
         get() = prefs.getLong(BRIDGE_LAST_EVENT_PUSHED_MS, 0)
         set(value) = prefs.edit().putLong(BRIDGE_LAST_EVENT_PUSHED_MS, value).apply()
+
+    /** Timestamp (ms) of the last heartbeat the bridge accepted. */
+    var lastHeartbeatMs: Long
+        get() = prefs.getLong(BRIDGE_LAST_HEARTBEAT_MS, 0)
+        set(value) = prefs.edit().putLong(BRIDGE_LAST_HEARTBEAT_MS, value).apply()
 
     /** JSON-serialized events that were not acknowledged by the bridge yet. Managed by [PairingPoller]. */
     var pendingEvents: String
@@ -174,6 +181,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
             .remove(BRIDGE_QUEUE_CURSOR)
             .remove(BRIDGE_EVENTS_CURSOR)
             .remove(BRIDGE_LAST_EVENT_PUSHED_MS)
+            .remove(BRIDGE_LAST_HEARTBEAT_MS)
             .remove(BRIDGE_PENDING_EVENTS)
             .remove(BRIDGE_RECENT_SEND_RESULTS)
             .apply()
