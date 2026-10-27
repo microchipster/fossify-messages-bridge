@@ -8,4 +8,7 @@ import org.fossify.messages.models.MessageAttachment
 interface MessageAttachmentsDao {
     @Query("SELECT * FROM message_attachments")
     fun getAll(): List<MessageAttachment>
+
+    @Query("DELETE FROM message_attachments WHERE id IN (:messageIds)")
+    fun deleteForMessages(messageIds: List<Long>)
 }

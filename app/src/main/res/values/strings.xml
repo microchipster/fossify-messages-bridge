@@ -104,6 +104,38 @@
     <string name="restore_all_messages">Restore all messages</string>
     <string name="empty_recycle_bin_messages_confirmation">Are you sure you want to empty the Recycle Bin? The messages will be permanently lost.</string>
     <string name="skip_the_recycle_bin_messages">Skip the Recycle Bin, delete messages directly</string>
+    <!-- History retention -->
+    <string name="history">History</string>
+    <string name="history_retention">Delete old messages</string>
+    <string name="history_retention_forever">Keep forever</string>
+    <string name="history_retention_inherit">Use the global setting (%s)</string>
+    <string name="history_retention_redactions">Redaction patterns</string>
+    <string name="history_retention_redactions_none">None</string>
+    <string name="history_retention_cleanup_now">Delete matching messages now</string>
+    <string name="history_retention_cleanup_confirmation">Are you sure you want to delete all messages matching the retention and redaction rules? They will be permanently lost.</string>
+    <string name="history_retention_cleanup_none">No messages matched the current rules</string>
+    <plurals name="history_retention_days">
+        <item quantity="one">%d day</item>
+        <item quantity="other">%d days</item>
+    </plurals>
+    <plurals name="history_retention_deleted">
+        <item quantity="one">Deleted %d message</item>
+        <item quantity="other">Deleted %d messages</item>
+    </plurals>
+    <plurals name="history_redaction_patterns">
+        <item quantity="one">%d pattern</item>
+        <item quantity="other">%d patterns</item>
+    </plurals>
+    <!-- Redaction patterns -->
+    <string name="redaction_patterns_helper">Matching messages are deleted regardless of their age.</string>
+    <string name="redaction_patterns_presets">Preset patterns</string>
+    <string name="redaction_patterns_custom">Custom patterns</string>
+    <string name="redaction_patterns_custom_hint">name=regex, one per line</string>
+    <string name="redaction_patterns_invalid">Invalid regular expression</string>
+    <string name="redaction_preset_otp">One-time codes</string>
+    <string name="redaction_preset_password_reset">Password resets</string>
+    <string name="redaction_preset_card_number">Card numbers</string>
+    <string name="redaction_preset_ssn">Social security numbers</string>
     <!-- Confirmation dialog -->
     <string name="delete_whole_conversation_confirmation">Are you sure you want to delete all messages of this conversation?</string>
     <string name="archive_confirmation">Are you sure you want to archive %s?</string>

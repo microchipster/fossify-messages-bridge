@@ -34,9 +34,12 @@ import org.fossify.messages.bridge.PairingActivity
 import org.fossify.messages.bridge.PairingStore
 import org.fossify.messages.databinding.ActivitySettingsBinding
 import org.fossify.messages.dialogs.ExportMessagesDialog
+import org.fossify.messages.dialogs.RedactionPatternsDialog
 import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.emptyMessagesRecycleBin
+import org.fossify.messages.extensions.historyRetentionText
 import org.fossify.messages.extensions.messagesDB
+import org.fossify.messages.extensions.runHistoryCleanup
 import org.fossify.messages.helpers.FILE_SIZE_100_KB
 import org.fossify.messages.helpers.FILE_SIZE_1_MB
 import org.fossify.messages.helpers.FILE_SIZE_200_KB
@@ -44,6 +47,7 @@ import org.fossify.messages.helpers.FILE_SIZE_2_MB
 import org.fossify.messages.helpers.FILE_SIZE_300_KB
 import org.fossify.messages.helpers.FILE_SIZE_600_KB
 import org.fossify.messages.helpers.FILE_SIZE_NONE
+import org.fossify.messages.helpers.HistoryRetention
 import org.fossify.messages.helpers.LOCK_SCREEN_NOTHING
 import org.fossify.messages.helpers.LOCK_SCREEN_SENDER
 import org.fossify.messages.helpers.LOCK_SCREEN_SENDER_MESSAGE
@@ -118,6 +122,9 @@ class SettingsActivity : SimpleActivity() {
         setupMMSFileSizeLimit()
         setupUseRecycleBin()
         setupEmptyRecycleBin()
+        setupHistoryRetention()
+        setupHistoryRedactions()
+        setupHistoryCleanupNow()
         setupAppPasswordProtection()
         setupMessagesExport()
         setupMessagesImport()
@@ -414,6 +421,66 @@ class SettingsActivity : SimpleActivity() {
                             recycleBinMessages,
                             recycleBinMessages
                         )
+                }
+            }
+        }
+    }
+
+    private fun setupHistoryRetention() = binding.apply {
+        settingsHistoryRetention.text = historyRetentionText(config.historyRetentionDays)
+        settingsHistoryRetentionHolder.setOnClickListener {
+            val items = arrayListOf(
+                RadioItem(1, historyRetentionText(HistoryRetention.KEEP_FOREVER), HistoryRetention.KEEP_FOREVER),
+                RadioItem(2, historyRetentionText(HistoryRetention.THIRTY_DAYS), HistoryRetention.THIRTY_DAYS),
+                RadioItem(3, historyRetentionText(HistoryRetention.NINETY_DAYS), HistoryRetention.NINETY_DAYS),
+                RadioItem(4, historyRetentionText(HistoryRetention.ONE_YEAR_DAYS), HistoryRetention.ONE_YEAR_DAYS),
+            )
+            val checkedItemId = items.firstOrNull { it.value == config.historyRetentionDays }?.id ?: 1
+            RadioGroupDialog(this@SettingsActivity, items, checkedItemId) {
+                config.historyRetentionDays = it as Int
+                settingsHistoryRetention.text = historyRetentionText(it)
+            }
+        }
+    }
+
+    private fun updateHistoryRedactionsText() = binding.apply {
+        val redactions = config.historyRedactions
+        val count = redactions.presets.size + redactions.extensions.size
+        settingsHistoryRedactions.text = if (count == 0) {
+            getString(R.string.history_retention_redactions_none)
+        } else {
+            resources.getQuantityString(R.plurals.history_redaction_patterns, count, count)
+        }
+    }
+
+    private fun setupHistoryRedactions() = binding.apply {
+        updateHistoryRedactionsText()
+        settingsHistoryRedactionsHolder.setOnClickListener {
+            RedactionPatternsDialog(this@SettingsActivity) {
+                updateHistoryRedactionsText()
+            }
+        }
+    }
+
+    private fun setupHistoryCleanupNow() = binding.apply {
+        settingsHistoryCleanupNowHolder.setOnClickListener {
+            ConfirmationDialog(
+                activity = this@SettingsActivity,
+                message = "",
+                messageId = R.string.history_retention_cleanup_confirmation,
+                positive = org.fossify.commons.R.string.yes,
+                negative = org.fossify.commons.R.string.no,
+            ) {
+                ensureBackgroundThread {
+                    val deleted = runHistoryCleanup()
+                    runOnUiThread {
+                        val message = if (deleted == 0) {
+                            getString(R.string.history_retention_cleanup_none)
+                        } else {
+                            resources.getQuantityString(R.plurals.history_retention_deleted, deleted, deleted)
+                        }
+                        toast(message)
+                    }
                 }
             }
         }

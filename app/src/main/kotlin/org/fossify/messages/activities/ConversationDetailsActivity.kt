@@ -9,6 +9,7 @@ import android.media.RingtoneManager
 import android.os.Bundle
 import android.provider.Settings
 import androidx.core.content.res.ResourcesCompat
+import org.fossify.commons.dialogs.RadioGroupDialog
 import org.fossify.commons.extensions.applyColorFilter
 import org.fossify.commons.extensions.beGone
 import org.fossify.commons.extensions.beVisible
@@ -20,7 +21,9 @@ import org.fossify.commons.extensions.updateTextColors
 import org.fossify.commons.extensions.viewBinding
 import org.fossify.commons.helpers.NavigationIcon
 import org.fossify.commons.helpers.ensureBackgroundThread
+import org.fossify.commons.models.RadioItem
 import org.fossify.commons.models.SimpleContact
+import org.fossify.messages.R
 import org.fossify.messages.adapters.ContactsAdapter
 import org.fossify.messages.databinding.ActivityConversationDetailsBinding
 import org.fossify.messages.dialogs.RenameConversationDialog
@@ -28,11 +31,16 @@ import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.conversationsDB
 import org.fossify.messages.extensions.getContactFromAddress
 import org.fossify.messages.extensions.getThreadParticipants
+import org.fossify.messages.extensions.historyRetentionText
 import org.fossify.messages.extensions.messagesDB
 import org.fossify.messages.extensions.renameConversation
 import org.fossify.messages.extensions.startContactDetailsIntent
+import org.fossify.messages.helpers.HistoryRetention
 import org.fossify.messages.helpers.THREAD_ID
+import org.fossify.messages.helpers.setConversationRetention
 import org.fossify.messages.models.Conversation
+
+private const val CONVERSATION_RETENTION_GLOBAL = -1
 
 class ConversationDetailsActivity : SimpleActivity() {
 
@@ -65,6 +73,7 @@ class ConversationDetailsActivity : SimpleActivity() {
                 setupTextViews()
                 setupParticipants()
                 setupCustomNotifications()
+                setupHistoryRetention()
             }
         }
     }
@@ -81,6 +90,57 @@ class ConversationDetailsActivity : SimpleActivity() {
             binding.membersHeading
         ).forEach {
             it.setTextColor(primaryColor)
+        }
+    }
+
+    private fun setupHistoryRetention() = binding.apply {
+        conversationHistoryRetention.text = conversationRetentionText()
+        conversationHistoryRetentionHolder.setOnClickListener {
+            val items = arrayListOf(
+                RadioItem(
+                    CONVERSATION_RETENTION_GLOBAL,
+                    getString(
+                        R.string.history_retention_inherit,
+                        historyRetentionText(config.historyRetentionDays),
+                    ),
+                    CONVERSATION_RETENTION_GLOBAL,
+                ),
+                RadioItem(
+                    HistoryRetention.KEEP_FOREVER,
+                    historyRetentionText(HistoryRetention.KEEP_FOREVER),
+                    HistoryRetention.KEEP_FOREVER,
+                ),
+                RadioItem(
+                    HistoryRetention.THIRTY_DAYS,
+                    historyRetentionText(HistoryRetention.THIRTY_DAYS),
+                    HistoryRetention.THIRTY_DAYS,
+                ),
+                RadioItem(
+                    HistoryRetention.NINETY_DAYS,
+                    historyRetentionText(HistoryRetention.NINETY_DAYS),
+                    HistoryRetention.NINETY_DAYS,
+                ),
+                RadioItem(
+                    HistoryRetention.ONE_YEAR_DAYS,
+                    historyRetentionText(HistoryRetention.ONE_YEAR_DAYS),
+                    HistoryRetention.ONE_YEAR_DAYS,
+                ),
+            )
+            val current = config.historyRetentionOverrides[threadId] ?: CONVERSATION_RETENTION_GLOBAL
+            val checkedItemId = items.firstOrNull { it.value == current }?.id ?: CONVERSATION_RETENTION_GLOBAL
+            RadioGroupDialog(this@ConversationDetailsActivity, items, checkedItemId) {
+                config.setConversationRetention(threadId, if (it == CONVERSATION_RETENTION_GLOBAL) null else it as Int)
+                conversationHistoryRetention.text = conversationRetentionText()
+            }
+        }
+    }
+
+    private fun conversationRetentionText(): String {
+        val override = config.historyRetentionOverrides[threadId]
+        return if (override == null) {
+            getString(R.string.history_retention_inherit, historyRetentionText(config.historyRetentionDays))
+        } else {
+            historyRetentionText(override)
         }
     }
 

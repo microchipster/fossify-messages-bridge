@@ -11,6 +11,7 @@ import org.fossify.commons.helpers.PERMISSION_READ_CONTACTS
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.messages.bridge.BridgeService
 import org.fossify.messages.extensions.rescheduleAllScheduledMessages
+import org.fossify.messages.extensions.scheduleHistoryCleanup
 import org.fossify.messages.helpers.MessagingCache
 
 class App : FossifyApp() {
@@ -34,6 +35,7 @@ class App : FossifyApp() {
 
         ensureBackgroundThread {
             rescheduleAllScheduledMessages()
+            scheduleHistoryCleanup()
         }
     }
 

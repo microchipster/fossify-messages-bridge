@@ -434,6 +434,78 @@
                 layout="@layout/divider" />
 
             <TextView
+                android:id="@+id/settings_history_label"
+                style="@style/SettingsSectionLabelStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/history" />
+
+            <RelativeLayout
+                android:id="@+id/settings_history_retention_holder"
+                style="@style/SettingsHolderTextViewStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_history_retention_label"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/history_retention" />
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_history_retention"
+                    style="@style/SettingsTextValueStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/settings_history_retention_label"
+                    tools:text="@string/history_retention_forever" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_history_redactions_holder"
+                style="@style/SettingsHolderTextViewStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_history_redactions_label"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/history_retention_redactions" />
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_history_redactions"
+                    style="@style/SettingsTextValueStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/settings_history_redactions_label"
+                    tools:text="@string/history_retention_redactions_none" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_history_cleanup_now_holder"
+                style="@style/SettingsHolderTextViewOneLinerStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_history_cleanup_now"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/history_retention_cleanup_now" />
+
+            </RelativeLayout>
+
+            <include
+                android:id="@+id/settings_history_divider"
+                layout="@layout/divider" />
+
+            <TextView
                 android:id="@+id/settings_security_label"
                 style="@style/SettingsSectionLabelStyle"
                 android:layout_width="match_parent"

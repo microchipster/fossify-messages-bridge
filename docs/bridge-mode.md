@@ -25,6 +25,8 @@ single-line JSON object.
 - Preference `control_enabled` (default **off**). While off, every control command returns
   `{"error":{"code":"disabled", …}}` and nothing else happens. Enable it in the app's bridge
   settings (or with `control.CONFIG` after a token is set and the flag is already on).
+  The single exception is [`control.PROVISION`](#controlprovision), the bootstrap command of a
+  zero-touch install, which also works while the flag is still off.
 - Authorization: the caller must either
   - pass `--es control_token <token>` matching the stored control token
     (set it in the app settings), or
@@ -47,10 +49,14 @@ adb shell am broadcast \
 Termux uses the same `am broadcast` invocation. Automation apps send the same intent with the
 `control_token` extra.
 
-The convenience wrapper in the bridge repository is:
+The convenience wrappers are:
 
 ```sh
+# bridge repository (all commands):
 tools/drive-app.sh <adb-serial> status|config|pair|send|unpair|sync [args…]
+# this repository (install and zero-touch provisioning):
+tools/install-app.sh <adb-serial> <apk> [config-file]
+tools/provision-app.sh <adb-serial> <config-file>
 ```
 
 `<adb-serial>` only selects the target device for the adb transport; it is never read into
@@ -127,6 +133,66 @@ file is attached. Result:
 No extras. Triggers one heartbeat + queue poll immediately. Returns the cursor subset of
 `control.STATUS`.
 
+### `control.PROVISION`
+
+Extra *json* `config` with any of `bridge_enabled`, `bridge_port`, `bridge_device_id`,
+`bridge_hs_url`, `bridge_base_url`, `control_enabled`, `control_token`. Applies the
+preferences, starts the bridge service when its settings changed, and marks the device
+provisioned (the timestamp is kept in the `provisioned_at` preference). Result:
+
+```json
+{"provisioned": true, "provisioned_at_ms": 1761600000000, "applied": ["bridge_enabled", "control_token"]}
+```
+
+Unlike the other commands it also works while `control_enabled` is still **off** — it is the
+bootstrap command of a zero-touch install. Authorization is still required: the caller passes
+the stored control token or holds `android.permission.DUMP` (what `adb shell` does).
+
+The static bridge token (`bridge_token`) is deliberately **not** part of this command: apply
+it afterwards with `control.CONFIG` if the deployment needs the static-token agent mode.
+Unknown keys and wrong types are rejected with `invalid_request`, so a typo never silently
+half-applies a config.
+
+## Zero-touch install and provisioning
+
+Two scripts under `tools/` install and configure a device without touching it:
+
+```sh
+tools/install-app.sh <adb-serial> <apk> [config-file]
+tools/provision-app.sh <adb-serial> <config-file>
+```
+
+`install-app.sh` runs `adb install -r`, grants the SMS permissions (plus notifications),
+makes the app the SMS app (`cmd role add-role-holder android.app.role.SMS` on Android 10+ and
+the legacy `settings put secure sms_default_application`), and then applies the optional
+config through `provision-app.sh`. `provision-app.sh` reads a plain text config file and
+sends it as the `control.PROVISION` `config` extra; it exits non-zero when the app's JSON
+verdict is an error. Both honour `APP_PACKAGE` (default `org.fossify.messages.bridge`, debug
+builds use `org.fossify.messages.bridge.debug`) and `CONTROL_TOKEN` (not needed for the
+`adb shell` path).
+
+### Config file format
+
+The config file is plain text holding exactly one JSON object — the shape the broadcast
+already takes, so the scripts need no converter, parser or escaping rules (`KEY=VALUE` would
+have added exactly that for no gain). Every key is optional; unknown keys and wrong types are
+rejected by the app.
+
+```json
+{
+  "bridge_enabled": true,
+  "bridge_port": 8391,
+  "bridge_hs_url": "https://matrix.example.com",
+  "bridge_base_url": "https://bridge.example.com",
+  "control_enabled": true,
+  "control_token": "a-long-random-token"
+}
+```
+
+`bridge_device_id` is optional and, as in `control.CONFIG`, is stored exactly as given;
+leave it out and the app keeps its random `android-<uuid>` id. Provisioning only prepares
+the app — pairing still happens with the normal flows (`control.PAIR` or the QR screen).
+
 ## Errors
 
 ```json
@@ -145,6 +211,8 @@ No extras. Triggers one heartbeat + queue poll immediately. Returns the cursor s
   identifier. A device id configured explicitly (for example with `control.CONFIG`) is used
   as-is and never rewritten.
 - The gateway is inert unless `control_enabled` is true *and* the caller is authorized.
+  Only `control.PROVISION` is accepted from an authorized caller while the flag is still off,
+  so a fresh install can be bootstrapped without touching the phone.
 
 ## Implementation map (for maintainers)
 
@@ -156,5 +224,9 @@ No extras. Triggers one heartbeat + queue poll immediately. Returns the cursor s
   and authorization matrix tests (`./gradlew :app:testFossDebugUnitTest`).
 - Status/config come from existing preference and `BridgeService` state; `PAIR`/`UNPAIR`
   reuse `PairingClient`/`PairingStore`; `SEND` reuses `BridgeSender` (including the
-  one-MMS group rule and the own-number filter); `SYNC` reuses the heartbeat/queue poller.
+  one-MMS group rule and the own-number filter); `SYNC` reuses the heartbeat/queue poller;
+  `PROVISION` applies the same preference shape as `CONFIG` (minus the static bridge token),
+  stores `provisioned_at` and skips the `control_enabled` gate.
+- `tools/install-app.sh` and `tools/provision-app.sh` are the scripted install/provisioning
+  path over adb; the JSON config file format is documented above.
 - Unit tests cover the JSON contracts and authorization matrix for every command.

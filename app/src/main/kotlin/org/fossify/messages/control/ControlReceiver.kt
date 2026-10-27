@@ -92,7 +92,10 @@ class ControlReceiver : BroadcastReceiver() {
         }
         val command = ControlCommand.fromAction(intent.action)
             ?: return ControlContract.errorJson(ControlContract.ERROR_INVALID_REQUEST, "unknown control action")
-        if (!BridgeConfig.newInstance(context).controlEnabled) {
+        // PROVISION is the bootstrap command: a freshly installed device still
+        // has control_enabled off and must accept its first config. The
+        // authorization check above still applies (DUMP or the stored token).
+        if (command != ControlCommand.PROVISION && !BridgeConfig.newInstance(context).controlEnabled) {
             Log.i(TAG, "control ${command.commandName} rejected: disabled")
             return ControlContract.errorJson(ControlContract.ERROR_DISABLED, "control intents are disabled")
         }
@@ -104,6 +107,7 @@ class ControlReceiver : BroadcastReceiver() {
                 ControlCommand.UNPAIR -> unpair(context)
                 ControlCommand.SEND -> send(context, intent)
                 ControlCommand.SYNC -> sync(context)
+                ControlCommand.PROVISION -> provision(context, intent)
             }
         } catch (e: Exception) {
             Log.e(TAG, "control ${command.commandName} failed: ${e.javaClass.simpleName}")
@@ -193,6 +197,37 @@ class ControlReceiver : BroadcastReceiver() {
                 bridgeBaseUrl = ControlContract.stringValue(payload, ControlContract.FIELD_BRIDGE_BASE_URL),
                 controlEnabled = ControlContract.booleanValue(payload, ControlContract.FIELD_CONTROL_ENABLED),
                 controlTokenSet = controlToken?.isNotEmpty(),
+            )
+        )
+    }
+
+    @Suppress("ReturnCount")
+    private fun provision(context: Context, intent: Intent): String {
+        val payload = ControlContract.objectOrNull(intent.getStringExtra(ControlContract.EXTRA_CONFIG))
+            ?: return invalidRequest("config must be a JSON object")
+        val problem = ControlContract.validateProvision(payload)
+        if (problem != null) {
+            return invalidRequest(problem)
+        }
+
+        val config = BridgeConfig.newInstance(context)
+        val store = PairingStore.newInstance(context)
+        applyBoolean(payload, ControlContract.FIELD_BRIDGE_ENABLED) { config.bridgeEnabled = it }
+        applyInt(payload, ControlContract.FIELD_BRIDGE_PORT) { config.bridgePort = it }
+        applyString(payload, ControlContract.FIELD_BRIDGE_DEVICE_ID) { config.bridgeDeviceId = it }
+        applyString(payload, ControlContract.FIELD_BRIDGE_HS_URL) { store.homeserverUrl = it }
+        applyString(payload, ControlContract.FIELD_BRIDGE_BASE_URL) { store.bridgeBaseUrl = it }
+        applyBoolean(payload, ControlContract.FIELD_CONTROL_ENABLED) { config.controlEnabled = it }
+        applyString(payload, ControlContract.FIELD_CONTROL_TOKEN) { config.controlToken = it }
+        config.provisionedAt = System.currentTimeMillis()
+
+        BridgeService.maybeStart(context)
+        Log.i(TAG, "control PROVISION applied keys: ${payload.keys.sorted().joinToString(",")}")
+        return ControlContract.provisionJson(
+            ControlProvisionPayload(
+                provisioned = true,
+                provisionedAtMs = config.provisionedAt,
+                applied = payload.keys.sorted(),
             )
         )
     }
