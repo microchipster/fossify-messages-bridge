@@ -52,6 +52,35 @@ used), and the **Ask before compressing** and **Maximum upload size**
 preferences carry over unchanged. Nothing is uploaded until the user taps the
 link option in the dialog or picks **Encrypted link**.
 
+## Albums (several media items, one link)
+
+Selecting more than one photo or video (the gallery pickers allow multiple
+selection; sharing several media items into a conversation behaves the same)
+offers the same size UX as one link, with the whole selection as the unit:
+
+- **Send as encrypted album** appears in the choice dialog when more than one
+  media item is selected and the selection as a whole is above the threshold,
+  or right away in the **Encrypted link** mode. Choosing it uploads every item
+  and the manifest in one `POST /f/albums` request and puts a single
+  `<cdn_base_url>/f/<id>#<key>` link into the message instead of the
+  attachments; **Add as separate attachments** keeps the ordinary MMS path.
+- The item order is the selection order; images, videos and audio can be
+  mixed. The app pre-checks the bridge defaults (at most 20 items, at most
+  500 MB of ciphertext, every item within **Maximum upload size**) and shows
+  the bridge's own error when a deployment lowered a cap.
+- One random fragment key per album; every item and the manifest are sealed
+  under their own HKDF-SHA256 subkey, derived on the device exactly like the
+  gallery page derives them. The key is never stored, logged or sent.
+
+Received album links render in place like single links: the app fetches the
+ciphertext route, falls back to the manifest route when the id is not a single
+file, and shows a 2–4 column grid (images as thumbnails, videos with a poster
+and play outline, audio with the compact player, everything else as a file
+card). Each cell loads independently, so one broken item shows **Couldn't
+load** without breaking the grid; taps open the existing viewer per item. The
+decrypted items share the bounded disk/memory caches of single links and are
+pruned the same way.
+
 ## Related
 
 - Bridge-side file-service contract: `docs/cdn-file-service.md` in the bridge

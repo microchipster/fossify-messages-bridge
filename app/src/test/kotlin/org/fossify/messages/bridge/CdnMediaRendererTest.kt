@@ -83,4 +83,19 @@ class CdnMediaRendererTest {
         assertEquals(CdnRenderStateMachine.State.LOADING, machine.state)
         assertFalse(machine.complete(first, loaded = true))
     }
+
+    @Test
+    fun onlyTheBoundGenerationIsCurrentForCellAnswers() {
+        val machine = CdnRenderStateMachine()
+        val first = machine.rebind()
+        assertTrue(machine.isCurrent(first))
+
+        val second = machine.rebind()
+
+        assertFalse(machine.isCurrent(first))
+        assertTrue(machine.isCurrent(second))
+        // A ready card keeps its generation until the row is rebound.
+        assertTrue(machine.complete(second, loaded = true))
+        assertTrue(machine.isCurrent(second))
+    }
 }

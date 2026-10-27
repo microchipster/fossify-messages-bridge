@@ -29,6 +29,9 @@ internal sealed class CdnRenderResult {
     /** [bitmap] is the decoded preview of image and video payloads; null for the other kinds. */
     data class Ready(val media: CdnMedia, val bitmap: Bitmap?) : CdnRenderResult()
 
+    /** The id is not a single file (the manifest route may answer): the album path may try. */
+    object NotAFile : CdnRenderResult()
+
     /** The payload could not be fetched, decrypted or decoded. */
     object Failed : CdnRenderResult()
 }
@@ -65,6 +68,9 @@ internal class CdnRenderStateMachine {
         state = if (loaded) State.READY else State.ERROR
         return true
     }
+
+    /** True while [generation] is the bound message; cell answers check it before painting. */
+    fun isCurrent(generation: Int): Boolean = generation == this.generation
 }
 
 /**
@@ -86,8 +92,29 @@ internal object CdnMediaCache {
         return fileName(id)?.let { File(File(context.cacheDir, DIR_NAME), it) }
     }
 
+    /** The cache file of a decrypted album manifest; null for anything but a bridge id. */
+    fun albumManifestFile(context: Context, id: String): File? {
+        return albumManifestName(id)?.let { File(File(context.cacheDir, DIR_NAME), it) }
+    }
+
+    /** The cache file of one decrypted album item; null for a bad id or index. */
+    fun albumItemFile(context: Context, id: String, index: Int): File? {
+        return albumItemName(id, index)?.let { File(File(context.cacheDir, DIR_NAME), it) }
+    }
+
     /** The file name of one upload; null for anything that is not a bridge id. */
     fun fileName(id: String): String? = id.takeIf { CdnLinkDetector.isValidId(it) }
+
+    /** The cache file of a decrypted album manifest; null for anything but a bridge id. */
+    fun albumManifestName(id: String): String? = fileName(id)?.let { "$it.manifest" }
+
+    /** The cache file of one decrypted album item; null for a bad id or index. */
+    fun albumItemName(id: String, index: Int): String? {
+        if (index !in 0 until CdnAlbum.HARD_MAX_ITEMS) {
+            return null
+        }
+        return fileName(id)?.let { "$it.$index" }
+    }
 
     /** Writes [bytes] through a temp file, then trims the directory. */
     fun write(file: File, bytes: ByteArray) {
@@ -149,6 +176,9 @@ internal object CdnMediaRenderer {
     /** Sniffed kinds of payloads seen this session, so a cached file is not re-read per scroll. */
     private val kinds = object : LruCache<String, CdnMediaKind>(MAX_KIND_CACHE_ENTRIES) {}
 
+    /** Ids answered 404 by `/raw`: they are albums, so the manifest route is taken without probing again. */
+    private val notFiles = object : LruCache<String, Boolean>(MAX_KIND_CACHE_ENTRIES) {}
+
     /** Decoded previews (thumbnails and video posters), bounded and keyed by upload id. */
     private val bitmaps = object : LruCache<String, Bitmap>(MEMORY_CACHE_BYTES) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount.coerceAtLeast(1)
@@ -169,6 +199,11 @@ internal object CdnMediaRenderer {
 
         if (file.exists()) {
             worker.execute { deliver(file, ref.id, previewWidthPx, callback) }
+            return
+        }
+
+        if (notFiles.get(ref.id) == true) {
+            mainHandler.post { callback(CdnRenderResult.NotAFile) }
             return
         }
 
@@ -201,8 +236,16 @@ internal object CdnMediaRenderer {
                 preview(ref.id, file, previewWidthPx)
             }
         } catch (e: CdnException) {
-            Log.w(TAG, "file service fetch failed: ${e.code}: ${e.message}")
-            CdnRenderResult.Failed
+            if (e.code == CdnClient.CODE_NOT_FOUND) {
+                // The id may be an album; the caller decides whether the
+                // manifest route answers. Remember the 404 so a rebind does
+                // not probe `/raw` again before the album path.
+                notFiles.put(ref.id, true)
+                CdnRenderResult.NotAFile
+            } else {
+                Log.w(TAG, "file service fetch failed: ${e.code}: ${e.message}")
+                CdnRenderResult.Failed
+            }
         } catch (e: Exception) {
             Log.w(TAG, "file service fetch failed", e)
             CdnRenderResult.Failed
@@ -212,17 +255,23 @@ internal object CdnMediaRenderer {
         waiters.forEach { callback -> mainHandler.post { callback(result) } }
     }
 
-    /** Blocking; runs on the worker thread. */
-    private fun preview(id: String, file: File, previewWidthPx: Int): CdnRenderResult {
-        val kind = kinds.get(id) ?: (sniffFile(file)?.also { kinds.put(id, it) } ?: return CdnRenderResult.Failed)
+    /**
+     * Sniffs, decodes and caches the preview of one decrypted payload that is
+     * already on disk; blocking, runs on the worker thread. The shared caches
+     * are keyed by [cacheKey], so album items reuse the file renderer's
+     * bounded memory without colliding with single-file cards.
+     */
+    internal fun preview(cacheKey: String, file: File, previewWidthPx: Int): CdnRenderResult {
+        val kind = kinds.get(cacheKey)
+            ?: (sniffFile(file)?.also { kinds.put(cacheKey, it) } ?: return CdnRenderResult.Failed)
         val media = CdnMedia(file, kind)
         val bitmap = when {
-            kind.isImage -> bitmaps.get(id) ?: decodeImage(file, previewWidthPx)
-            kind.isVideo -> bitmaps.get(id) ?: videoPoster(file, previewWidthPx)
+            kind.isImage -> bitmaps.get(cacheKey) ?: decodeImage(file, previewWidthPx)
+            kind.isVideo -> bitmaps.get(cacheKey) ?: videoPoster(file, previewWidthPx)
             else -> null
         }
         if (bitmap != null) {
-            bitmaps.put(id, bitmap)
+            bitmaps.put(cacheKey, bitmap)
         }
         return CdnRenderResult.Ready(media, bitmap)
     }

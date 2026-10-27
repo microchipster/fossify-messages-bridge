@@ -6,11 +6,16 @@
 
 package org.fossify.messages.bridge
 
+import org.fossify.messages.extensions.isAudioMimeType
 import org.fossify.messages.extensions.isGifMimeType
 import org.fossify.messages.extensions.isImageMimeType
+import org.fossify.messages.extensions.isVideoMimeType
 
 /** One way an oversized attachment can leave the device. */
 internal enum class CdnSendOption { ENCRYPTED_LINK, COMPRESS, MMS }
+
+/** One way a multi-selection of media can leave the device. */
+internal enum class CdnAlbumSendAction { NONE, ASK, LINK }
 
 /**
  * The single decision the send path makes for one attachment.
@@ -101,5 +106,75 @@ internal object CdnSendPath {
             options += CdnSendOption.MMS
         }
         return options
+    }
+}
+
+/**
+ * The inputs of the album send path: a multi-selection of media, the carrier
+ * and upload limits, the advertised file service and the sender-size
+ * settings. Pure data, so the "Send as album" gating is unit-testable.
+ *
+ * The album counts whole: [overThreshold] compares the summed plaintext size
+ * and the caps account for the GCM overhead of every item plus the manifest.
+ */
+internal data class CdnAlbumSendInput(
+    val itemSizesBytes: List<Long>,
+    val mimeTypes: List<String>,
+    val mmsLimitBytes: Long,
+    val cdnAdvertised: Boolean,
+    val settings: CdnSettings,
+) {
+    val itemCount: Int
+        get() = itemSizesBytes.size
+
+    /** All selected items are media the inline gallery can render. */
+    val allMedia: Boolean
+        get() = mimeTypes.all { it.isImageMimeType() || it.isVideoMimeType() || it.isAudioMimeType() }
+
+    val totalPlaintextBytes: Long
+        get() = itemSizesBytes.sum()
+
+    /** Items plus the GCM overhead of every item and of the manifest. */
+    val totalCiphertextBytes: Long
+        get() = totalPlaintextBytes + (itemCount + 1) * CdnCrypto.OVERHEAD_BYTES
+
+    /** Bytes above which the multi-selection takes the configured mode. */
+    val thresholdBytes: Long?
+        get() = settings.thresholdBytes(mmsLimitBytes)
+
+    /** The whole selection is above the threshold; Auto follows the carrier limit. */
+    val overThreshold: Boolean
+        get() = thresholdBytes?.let { totalPlaintextBytes > it } ?: false
+
+    /** Every item is still within the app-side upload limit, overhead included. */
+    val fitsItemLimit: Boolean
+        get() = itemSizesBytes.all { it > 0 && it + CdnCrypto.OVERHEAD_BYTES <= settings.uploadLimitBytes }
+
+    /** The item count and the total ciphertext fit the bridge's album caps. */
+    val withinAlbumLimits: Boolean
+        get() = itemCount in 2..CdnAlbum.MAX_ITEMS && totalCiphertextBytes <= CdnAlbum.MAX_ALBUM_BYTES
+
+    /** Every condition for the album itself: advertised, media only, within every limit. */
+    val linkAvailable: Boolean
+        get() = cdnAdvertised && allMedia && fitsItemLimit && withinAlbumLimits
+
+    /**
+     * Whether the configured mode offers the album: more than one item and
+     * above the threshold, or any multi-selection in [CdnSendMode.LINK].
+     */
+    val albumOffered: Boolean
+        get() = linkAvailable && settings.mode != CdnSendMode.NEVER &&
+            (overThreshold || settings.mode == CdnSendMode.LINK)
+}
+
+internal object CdnAlbumSendPath {
+    /**
+     * The action for [input]: upload right away in [CdnSendMode.LINK], ask
+     * first in [CdnSendMode.ASK], otherwise keep the ordinary attach path.
+     */
+    fun action(input: CdnAlbumSendInput): CdnAlbumSendAction = when {
+        !input.albumOffered -> CdnAlbumSendAction.NONE
+        input.settings.mode == CdnSendMode.LINK -> CdnAlbumSendAction.LINK
+        else -> CdnAlbumSendAction.ASK
     }
 }
