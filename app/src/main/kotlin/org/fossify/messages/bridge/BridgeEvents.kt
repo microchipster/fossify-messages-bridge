@@ -237,7 +237,8 @@ object BridgeEvents {
 
     fun normalizeSubId(subId: Int) = if (subId < 0) -1 else subId
 
-    private fun preview(body: String): String {
+    /** Single-line preview of a body, as carried by every `message.new` event. */
+    internal fun preview(body: String): String {
         val singleLine = body.replace('\n', ' ').trim()
         return if (singleLine.length > MAX_PREVIEW_LENGTH) {
             singleLine.take(MAX_PREVIEW_LENGTH)

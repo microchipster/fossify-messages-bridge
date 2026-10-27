@@ -17,6 +17,41 @@ private const val TAG = "PairingOutbox"
 private const val MAX_PENDING_EVENTS = 200
 private const val MAX_RECENT_RESULTS = 100
 
+// The bridge caps pairing API request bodies at 4 MiB (pairingMaxBodyBytes).
+// Keep a margin for the envelope and for JSON escaping of body text.
+internal const val MAX_BATCH_BYTES = 3 * 1024 * 1024
+private const val BATCH_ENVELOPE_BYTES = 512
+
+/** Encoded size of one event inside an `events` request body (UTF-8 JSON). */
+internal fun eventBytes(json: Json, event: BridgeEvent): Int =
+    json.encodeToString(BridgeEvent.serializer(), event).toByteArray(Charsets.UTF_8).size
+
+/**
+ * Longest prefix of [events] whose request body stays within [maxBytes].
+ *
+ * A batch that exceeds the bridge's body cap is rejected as a whole and would
+ * block every later event, so bursts of inline MMS payloads (replayed
+ * messages fetched from the phone) must be split across requests. A single
+ * event larger than [maxBytes] is returned alone; the caller decides what to do
+ * with it.
+ */
+internal fun fitEventBatch(
+    json: Json,
+    events: List<BridgeEvent>,
+    maxBytes: Int,
+    envelopeBytes: Int,
+): List<BridgeEvent> {
+    var bytes = envelopeBytes
+    for ((index, event) in events.withIndex()) {
+        val size = eventBytes(json, event)
+        if (index > 0 && bytes + size > maxBytes) {
+            return events.subList(0, index)
+        }
+        bytes += size
+    }
+    return events
+}
+
 /** `POST /_smsmms/v1/events` body. */
 @Serializable
 internal data class EventsRequest(
@@ -127,7 +162,11 @@ internal class PairingOutbox(private val context: Context, private val store: Pa
             }
 
             val baseSeq = store.eventsCursor
-            val events = pending.mapIndexed { index, item -> item.event.copy(seq = baseSeq + index + 1) }
+            val all = pending.mapIndexed { index, item -> item.event.copy(seq = baseSeq + index + 1) }
+            // Split bursts of inline payloads (fetched replayed MMS) into
+            // several requests: one oversized batch would be rejected as a
+            // whole and block every later event.
+            val events = fitEventBatch(json, all, MAX_BATCH_BYTES, BATCH_ENVELOPE_BYTES)
             val maxSeq = events.last().seq
             val body = json.encodeToString(
                 EventsRequest.serializer(),
