@@ -18,7 +18,6 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.serializer
 import org.fossify.messages.BuildConfig
-import java.security.SecureRandom
 
 /** A completed pairing, as reported by `POST /_smsmms/v1/pair/complete`. */
 data class PairingResult(
@@ -50,7 +49,6 @@ object PairingClient {
     private const val TAG = "PairingClient"
     private const val WELL_KNOWN_KEY = "chat.<namespace>.bridge.sms_mms"
     private const val DISCOVERY_TIMEOUT_MS = 15_000
-    private const val DEVICE_ID_BYTES = 4
 
     private val json = Json {
         encodeDefaults = false
@@ -242,24 +240,12 @@ object PairingClient {
         return url
     }
 
-    /** Stable device id: the user-configured one, else an app-generated `android-<random>`. */
+    /**
+     * Stable device id: generated once and persisted by [BridgeConfig] as a
+     * random value, never derived from a hardware identifier.
+     */
     fun deviceId(context: Context): String {
-        val configured = BridgeConfig.newInstance(context).bridgeDeviceId.trim()
-        if (configured.isNotEmpty()) {
-            return configured
-        }
-
-        val store = PairingStore.newInstance(context)
-        val stored = store.pairedDeviceId.trim()
-        if (stored.isNotEmpty()) {
-            return stored
-        }
-
-        val random = ByteArray(DEVICE_ID_BYTES)
-        SecureRandom().nextBytes(random)
-        val generated = "android-" + random.joinToString("") { "%02x".format(it) }
-        store.pairedDeviceId = generated
-        return generated
+        return BridgeConfig.newInstance(context).bridgeDeviceId
     }
 
     private fun resolveBridgeBaseUrl(homeserverUrl: String, bridgeUrlOverride: String): String {

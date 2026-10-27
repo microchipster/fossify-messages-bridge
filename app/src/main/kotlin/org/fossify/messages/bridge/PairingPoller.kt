@@ -39,6 +39,11 @@ private const val MS_PER_SECOND = 1_000
  */
 class PairingPoller(private val context: Context) {
 
+    companion object {
+        // Serializes queue-response handling between the long-poll loop and control.SYNC.
+        private val QUEUE_APPLY_LOCK = Any()
+    }
+
     private val store = PairingStore.newInstance(context)
     private val outbox = PairingOutbox(context, store)
     private val executor = BridgeCommandExecutor(context, outbox)
@@ -82,6 +87,32 @@ class PairingPoller(private val context: Context) {
         queueThread = null
     }
 
+    /**
+     * Runs one queue poll (without waiting for commands) and one heartbeat
+     * immediately; used by `control.SYNC`.
+     *
+     * Response handling is serialized with the long-poll loops and commands
+     * below the stored cursor are skipped, so calling this while the service
+     * is running is safe. Throws [PairingException] when the poll fails.
+     */
+    fun syncOnce() {
+        val token = store.token
+        if (token.isEmpty() || store.bridgeBaseUrl.isBlank()) {
+            store.clearPairing()
+            throw PairingException("not_paired", 0, "pairing state is incomplete")
+        }
+        try {
+            applyQueueResponse(fetchQueue(token, waitMs = 0))
+            outbox.flush()
+            BridgeHeartbeat.sendIfDue(context, store, token, store.lastHeartbeatMs, force = true)
+        } catch (e: PairingException) {
+            if (e.status == PairingHttp.HTTP_STATUS_UNAUTHORIZED || e.status == PairingHttp.HTTP_STATUS_FORBIDDEN) {
+                store.clearPairing()
+            }
+            throw e
+        }
+    }
+
     // The loop must survive any bridge or provider failure and simply retry with backoff.
     @Suppress("TooGenericExceptionCaught")
     private fun runQueueLoop() {
@@ -96,7 +127,7 @@ class PairingPoller(private val context: Context) {
                     return
                 }
 
-                handleQueueResponse(fetchQueue(token))
+                applyQueueResponse(fetchQueue(token))
                 backoff = BACKOFF_INITIAL_MS
                 outbox.flush()
                 lastHeartbeatMs = BridgeHeartbeat.sendIfDue(context, store, token, lastHeartbeatMs)
@@ -147,28 +178,40 @@ class PairingPoller(private val context: Context) {
         }
     }
 
+    /** Applies a queue response under the shared lock; see [syncOnce] for why. */
+    private fun applyQueueResponse(response: QueueResponse) {
+        synchronized(QUEUE_APPLY_LOCK) {
+            handleQueueResponse(response)
+        }
+    }
+
     private fun handleQueueResponse(response: QueueResponse) {
         if (response.reset) {
             Log.i(TAG, "queue cursor is too old (reset), re-sending recent state")
             pushGapSnapshot()
         } else {
-            if (response.commands.isNotEmpty()) {
-                Log.i(TAG, "got ${response.commands.size} queue commands up to ${response.cursor}")
+            // control.SYNC can fetch in parallel with the long-poll loop; skip
+            // commands the stored cursor already covers.
+            val cursor = store.queueCursor
+            val commands = response.commands.filter { it.seq <= 0 || it.seq > cursor }
+            if (commands.isNotEmpty()) {
+                Log.i(TAG, "got ${commands.size} queue commands up to ${response.cursor}")
             }
-            for (command in response.commands) {
+            for (command in commands) {
                 executor.execute(command)
             }
         }
         if (response.reset || response.commands.isNotEmpty()) {
-            store.queueCursor = response.cursor
+            // Never move the cursor backwards, even when a stale response arrives late.
+            store.queueCursor = maxOf(store.queueCursor, response.cursor)
         }
     }
 
     // A response that cannot be parsed is reported as a protocol error, whatever the parser throws.
     @Suppress("TooGenericExceptionCaught")
-    private fun fetchQueue(token: String): QueueResponse {
+    private fun fetchQueue(token: String, waitMs: Int = QUEUE_WAIT_MS): QueueResponse {
         val url = PairingHttp.endpoint(store.bridgeBaseUrl, "/_smsmms/v1/queue") +
-            "?since=${store.queueCursor}&wait_ms=$QUEUE_WAIT_MS"
+            "?since=${store.queueCursor}&wait_ms=$waitMs"
         val body = PairingHttp.requestJson(
             url = url,
             method = "GET",

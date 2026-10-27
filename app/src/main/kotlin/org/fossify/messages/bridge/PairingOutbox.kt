@@ -67,6 +67,18 @@ internal class PairingOutbox(private val context: Context, private val store: Pa
         }
     }
 
+    /**
+     * Counts of queued message-facing events by kind (undelivered `message.new`
+     * / `send.result` events), reported as the outbox sizes of `control.STATUS`.
+     * Other event types (acks, thread updates) are ignored.
+     */
+    fun pendingMessageCounts(): Pair<Int, Int> {
+        synchronized(lock) {
+            val pending = loadPending().filter { it.event.messageId.isNotEmpty() || it.event.sendId.isNotEmpty() }
+            return pending.count { !it.event.isMms } to pending.count { it.event.isMms }
+        }
+    }
+
     fun findRecentResult(sendId: String): BridgeEvent? {
         if (sendId.isEmpty()) {
             return null

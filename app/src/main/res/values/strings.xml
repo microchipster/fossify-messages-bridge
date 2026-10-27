@@ -17,7 +17,7 @@
     <string name="bridge_pairing_bridge_url_helper">Leave empty to discover it via the homeserver well-known</string>
     <string name="bridge_pairing_code">Pairing code</string>
     <string name="bridge_pairing_device_id">Device ID</string>
-    <string name="bridge_pairing_device_id_helper">Use the phone\'s adb serial when the adb agent also bridges this phone, so both transports share the same rooms</string>
+    <string name="bridge_pairing_device_id_helper">Generated automatically and kept stable; leave it unchanged unless you are migrating an existing bridge pairing</string>
     <string name="bridge_pairing_pair">Pair</string>
     <string name="bridge_pairing_unpair">Unpair this device</string>
     <string name="bridge_pairing_status_not_paired">Not paired</string>

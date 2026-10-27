@@ -31,6 +31,8 @@ app-build-kotlinJVMTarget = "17"
 ez-vcard = "0.12.2"
 #QR scanning (pairing)
 zxing-android-embedded = "4.3.0"
+#Testing
+junit = "4.13.2"
 [libraries]
 #AndroidX
 androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "androidx-constraintlayout" }
@@ -54,6 +56,8 @@ ez-vcard = { module = "com.googlecode.ez-vcard:ez-vcard", version.ref = "ez-vcar
 zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxing-android-embedded" }
 #Kotlin
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
+#Testing
+junit = { module = "junit:junit", version.ref = "junit" }
 [bundles]
 room = [
     "androidx-room-ktx",

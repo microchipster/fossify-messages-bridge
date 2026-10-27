@@ -48,15 +48,21 @@ internal object BridgeHeartbeat {
     }
 
     /**
-     * Sends a heartbeat when the interval elapsed and returns the new
-     * timestamp. A rejected device token is rethrown, so the caller can clear
-     * the pairing.
+     * Sends a heartbeat when the interval elapsed (or always with [force])
+     * and returns the new timestamp. A rejected device token is rethrown, so
+     * the caller can clear the pairing.
      */
     // Heartbeat failures are logged except when the token was rejected, which the caller must handle.
     @Suppress("TooGenericExceptionCaught")
-    fun sendIfDue(context: Context, store: PairingStore, token: String, lastHeartbeatMs: Long): Long {
+    fun sendIfDue(
+        context: Context,
+        store: PairingStore,
+        token: String,
+        lastHeartbeatMs: Long,
+        force: Boolean = false,
+    ): Long {
         val now = System.currentTimeMillis()
-        if (lastHeartbeatMs != 0L && now - lastHeartbeatMs < HEARTBEAT_INTERVAL_MS) {
+        if (!force && lastHeartbeatMs != 0L && now - lastHeartbeatMs < HEARTBEAT_INTERVAL_MS) {
             return lastHeartbeatMs
         }
 
@@ -75,6 +81,7 @@ internal object BridgeHeartbeat {
                 token = token,
                 body = json.encodeToString(HeartbeatRequest.serializer(), payload),
             )
+            store.lastHeartbeatMs = now
         } catch (e: PairingException) {
             if (e.status == PairingHttp.HTTP_STATUS_UNAUTHORIZED || e.status == PairingHttp.HTTP_STATUS_FORBIDDEN) {
                 throw e

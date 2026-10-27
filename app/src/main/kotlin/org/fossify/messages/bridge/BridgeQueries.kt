@@ -7,14 +7,12 @@
 package org.fossify.messages.bridge
 
 import android.Manifest
-import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import android.provider.Telephony.Mms
 import android.provider.Telephony.Sms
 import android.provider.Telephony.Threads
@@ -91,7 +89,12 @@ data class BridgeSubscription(
 
 @Serializable
 data class BridgeDeviceInfo(
-    val serial: String,
+    /**
+     * Random app-generated stable device id ([BridgeConfig.bridgeDeviceId]);
+     * the wire field keeps the agent API name `serial`. Never a hardware
+     * identifier.
+     */
+    @SerialName("serial") val deviceId: String,
     val model: String = "",
     @SerialName("android_sdk") val androidSdk: Int = 0,
     @SerialName("android_release") val androidRelease: String = "",
@@ -239,7 +242,7 @@ object BridgeQueries {
             ok = true,
             protocolVersion = PROTOCOL_VERSION,
             device = BridgeDeviceInfo(
-                serial = deviceSerial(context),
+                deviceId = BridgeConfig.newInstance(context).bridgeDeviceId,
                 model = Build.MODEL.orEmpty(),
                 androidSdk = Build.VERSION.SDK_INT,
                 androidRelease = Build.VERSION.RELEASE.orEmpty(),
@@ -942,41 +945,5 @@ object BridgeQueries {
 
     private fun firstNonEmpty(vararg values: String): String {
         return values.firstOrNull { it.isNotBlank() }.orEmpty()
-    }
-
-    private fun deviceSerial(context: Context): String {
-        val configured = BridgeConfig.newInstance(context).bridgeDeviceId
-        if (configured.isNotBlank()) {
-            return configured
-        }
-
-        val serial = try {
-            hardwareSerial(context)
-        } catch (_: Exception) {
-            Build.SERIAL
-        }
-        if (!serial.isNullOrBlank() && serial != Build.UNKNOWN) {
-            return serial
-        }
-
-        return try {
-            Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID).orEmpty()
-        } catch (_: Exception) {
-            ""
-        }
-    }
-
-    /**
-     * Best-effort hardware serial. [Build.getSerial] is annotated with the signature-level
-     * READ_PRIVILEGED_PHONE_STATE from API 30 on, which a normal app can never hold; on the API
-     * levels where it is readable (26-29) READ_PHONE_STATE is checked first.
-     */
-    // Lint demands the signature-level READ_PRIVILEGED_PHONE_STATE; the API 26-29 path is guarded below.
-    @SuppressLint("MissingPermission")
-    private fun hardwareSerial(context: Context): String {
-        val canReadSerial = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.READ_PHONE_STATE) ==
-            PackageManager.PERMISSION_GRANTED
-        return if (canReadSerial) Build.getSerial() else Build.SERIAL
     }
 }
