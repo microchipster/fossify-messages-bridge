@@ -15,8 +15,8 @@ private const val TYPE_ACK = "ack"
 
 /**
  * Runs one queue command and turns it into the event the bridge expects:
- * `send.result` for `send_sms` / `send_mms` and `ack` for `mark_read` / `ping`
- * (see `docs/PAIRING_PROTOCOL.md`).
+ * `send.result` for `send_sms` / `send_mms` and `ack` for `mark_read` / `ping` /
+ * `fetch_message` / `merge_threads.result` (see `docs/PAIRING_PROTOCOL.md`).
  *
  * Commands are executed through the same code the local HTTP API and the UI
  * use ([BridgeSender] and [BridgeQueries]), so both transports behave
@@ -30,12 +30,25 @@ internal class BridgeCommandExecutor(private val context: Context, private val o
             QueueCommand.TYPE_MARK_READ -> executeMarkRead(command)
             QueueCommand.TYPE_PING -> outbox.enqueue(ackEvent(command, null))
             QueueCommand.TYPE_FETCH_MESSAGE -> executeFetchMessage(command)
+            QueueCommand.TYPE_MERGE_RESULT -> executeMergeResult(command)
             else -> {
                 Log.w(TAG, "unknown queue command type '${command.type}'")
                 val error = BridgeEventError("unsupported", "unknown command type '${command.type}'")
                 outbox.enqueue(ackEvent(command, error))
             }
         }
+    }
+
+    /**
+     * Answers `merge_threads.result`, the bridge's verdict on a merge the user
+     * requested from the conversation list. The outcome is persisted for the UI
+     * to show and acknowledged so the command is not delivered again.
+     */
+    private fun executeMergeResult(command: QueueCommand) {
+        val outcome = MergeThreads.outcomeFor(command)
+        Log.i(TAG, "merge_threads result: ok=${outcome.ok}")
+        MergeThreads.rememberOutcome(context, outcome)
+        outbox.enqueue(ackEvent(command, null))
     }
 
     /**

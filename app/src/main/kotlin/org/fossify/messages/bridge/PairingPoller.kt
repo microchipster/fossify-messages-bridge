@@ -275,6 +275,12 @@ internal data class QueueCommand(
     val attachments: List<BridgeSendAttachment> = emptyList(),
     @SerialName("thread_id") val threadId: Long = 0,
     @SerialName("up_to_ms") val upToMs: Long = 0,
+    // merge_threads.result only: the request's selection, the merged target
+    // room and the error when the merge was refused or failed.
+    @SerialName("thread_ids") val threadIds: List<Long> = emptyList(),
+    @SerialName("target_thread") val targetThread: Long = 0,
+    @SerialName("room_id") val roomId: String = "",
+    val error: BridgeEventError? = null,
 ) {
     companion object {
         const val TYPE_SEND_SMS = "send_sms"
@@ -282,6 +288,7 @@ internal data class QueueCommand(
         const val TYPE_MARK_READ = "mark_read"
         const val TYPE_PING = "ping"
         const val TYPE_FETCH_MESSAGE = "fetch_message"
+        const val TYPE_MERGE_RESULT = "merge_threads.result"
     }
 }
 

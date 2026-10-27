@@ -15,6 +15,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
+import org.fossify.messages.helpers.SEND_GROUP_MESSAGE_MMS
+import org.fossify.messages.helpers.SEND_LONG_MESSAGE_MMS
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -147,10 +149,22 @@ class ControlContractTest {
         val valid = ControlContract.objectOrNull(
             """{"bridge_enabled":true,"bridge_port":8391,"bridge_device_id":"id",
                "bridge_hs_url":"https://matrix.example.com","bridge_base_url":"https://bridge.example.com",
-               "control_enabled":true,"control_token":"c"}"""
+               "control_enabled":true,"control_token":"c",
+               "send_long_message_mms":false,"send_group_message_mms":true}"""
         )!!
         assertNull(ControlContract.validateProvision(valid))
         assertNull(ControlContract.validateProvision(ControlContract.objectOrNull("{}")!!))
+    }
+
+    @Test
+    fun provisionMessageFormatKeysMatchTheAppPreferences() {
+        assertEquals(SEND_LONG_MESSAGE_MMS, ControlContract.FIELD_SEND_LONG_MESSAGE_MMS)
+        assertEquals(SEND_GROUP_MESSAGE_MMS, ControlContract.FIELD_SEND_GROUP_MESSAGE_MMS)
+        assertTrue(ControlContract.PROVISION_KEYS.contains(ControlContract.FIELD_SEND_LONG_MESSAGE_MMS))
+        assertTrue(ControlContract.PROVISION_KEYS.contains(ControlContract.FIELD_SEND_GROUP_MESSAGE_MMS))
+        // They are bootstrap-only: control.CONFIG must not accept them.
+        assertFalse(ControlContract.CONFIG_KEYS.contains(ControlContract.FIELD_SEND_LONG_MESSAGE_MMS))
+        assertFalse(ControlContract.CONFIG_KEYS.contains(ControlContract.FIELD_SEND_GROUP_MESSAGE_MMS))
     }
 
     @Test
@@ -162,6 +176,14 @@ class ControlContractTest {
         assertEquals(
             "config key 'control_enabled' must be a boolean",
             ControlContract.validateProvision(ControlContract.objectOrNull("""{"control_enabled":"yes"}""")!!),
+        )
+        assertEquals(
+            "config key 'send_long_message_mms' must be a boolean",
+            ControlContract.validateProvision(ControlContract.objectOrNull("""{"send_long_message_mms":"yes"}""")!!),
+        )
+        assertEquals(
+            "config key 'send_group_message_mms' must be a boolean",
+            ControlContract.validateProvision(ControlContract.objectOrNull("""{"send_group_message_mms":1}""")!!),
         )
         assertEquals(
             "config key 'bridge_port' must be between 1024 and 65535",

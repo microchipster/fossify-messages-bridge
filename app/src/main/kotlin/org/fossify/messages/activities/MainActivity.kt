@@ -53,6 +53,7 @@ import org.fossify.messages.BuildConfig
 import org.fossify.messages.R
 import org.fossify.messages.adapters.ConversationsAdapter
 import org.fossify.messages.adapters.SearchResultsAdapter
+import org.fossify.messages.bridge.MergeThreads
 import org.fossify.messages.databinding.ActivityMainBinding
 import org.fossify.messages.extensions.checkAndDeleteOldRecycleBinMessages
 import org.fossify.messages.extensions.checkAndRunHistoryCleanup
@@ -112,6 +113,7 @@ class MainActivity : SimpleActivity() {
         super.onResume()
         updateMenuColors()
         refreshMenuItems()
+        showMergeThreadsResult()
 
         getOrCreateConversationsAdapter().apply {
             if (storedTextColor != getProperTextColor()) {
@@ -677,6 +679,23 @@ class MainActivity : SimpleActivity() {
     @Subscribe(threadMode = ThreadMode.MAIN)
     fun refreshConversations(@Suppress("unused") event: Events.RefreshConversations) {
         initMessenger()
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    fun onMergeThreadsResult(@Suppress("unused") event: Events.MergeResult) {
+        showMergeThreadsResult()
+    }
+
+    /** Shows the bridge's verdict on an app-requested conversation merge, once. */
+    private fun showMergeThreadsResult() {
+        val outcome = MergeThreads.consumeOutcome(this) ?: return
+        toast(
+            if (outcome.ok) {
+                getString(R.string.merge_threads_succeeded, outcome.roomId)
+            } else {
+                getString(R.string.merge_threads_failed, outcome.message)
+            }
+        )
     }
 
     private fun checkWhatsNewDialog() {

@@ -54,6 +54,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
         const val BRIDGE_LAST_HEARTBEAT_MS = "bridge_last_heartbeat_ms"
         const val BRIDGE_PENDING_EVENTS = "bridge_pending_events"
         const val BRIDGE_RECENT_SEND_RESULTS = "bridge_recent_send_results"
+        const val BRIDGE_MERGE_OUTCOME = "bridge_merge_outcome"
 
         private val TOKEN_KEY_LOCK = Any()
 
@@ -117,6 +118,14 @@ class PairingStore(context: Context) : BaseConfig(context) {
         get() = prefs.getString(BRIDGE_RECENT_SEND_RESULTS, "").orEmpty()
         set(value) = prefs.edit().putString(BRIDGE_RECENT_SEND_RESULTS, value).apply()
 
+    /**
+     * JSON-serialized `merge_threads.result` the user has not seen yet, shown
+     * by the conversation list as a toast. Managed by [MergeThreads].
+     */
+    var mergeOutcome: String
+        get() = prefs.getString(BRIDGE_MERGE_OUTCOME, "").orEmpty()
+        set(value) = prefs.edit().putString(BRIDGE_MERGE_OUTCOME, value).apply()
+
     /** True when a wrapped device token is stored. */
     val isPaired: Boolean
         get() = prefs.getString(BRIDGE_TOKEN_WRAPPED, "").orEmpty().isNotEmpty()
@@ -151,6 +160,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
         lastEventPushedMs = 0
         pendingEvents = ""
         recentSendResults = ""
+        mergeOutcome = ""
         prefs.edit()
             .putString(BRIDGE_HS_URL, homeserverUrl)
             .putString(BRIDGE_BASE_URL, bridgeBaseUrl)
@@ -166,6 +176,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
             .remove(BRIDGE_TOKEN_WRAPPED)
             .remove(BRIDGE_PENDING_EVENTS)
             .remove(BRIDGE_RECENT_SEND_RESULTS)
+            .remove(BRIDGE_MERGE_OUTCOME)
             .apply()
     }
 
@@ -184,6 +195,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
             .remove(BRIDGE_LAST_HEARTBEAT_MS)
             .remove(BRIDGE_PENDING_EVENTS)
             .remove(BRIDGE_RECENT_SEND_RESULTS)
+            .remove(BRIDGE_MERGE_OUTCOME)
             .apply()
     }
 

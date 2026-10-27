@@ -153,6 +153,11 @@ abstract class BaseConversationsAdapter(
             pinIndicator.applyColorFilter(textColor)
 
             conversationFrame.isSelected = selectedKeys.contains(conversation.hashCode())
+            // Selection mode shows a check on the avatar in addition to the
+            // row highlight, so the merge action has visible checkboxes.
+            selectionCheck.beVisibleIf(conversationFrame.isSelected)
+            selectionCheck.background?.applyColorFilter(backgroundColor)
+            selectionCheck.applyColorFilter(properPrimaryColor)
 
             conversationAddress.apply {
                 text = conversation.title

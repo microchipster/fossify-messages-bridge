@@ -32,6 +32,11 @@
     <string name="bridge_pairing_invalid_payload">This is not a valid pairing payload</string>
     <string name="bridge_pairing_camera_denied">Camera permission is needed to scan the QR code</string>
     <string name="bridge_pairing_scan_failed">Cannot open the QR scanner</string>
+    <!-- Bridge merging -->
+    <string name="merge_as_group_chat">Merge as group chat</string>
+    <string name="merge_threads_confirmation">Merge %1$d conversations into one group chat?\n\n%2$s\n\nMerged-away chats are tombstoned and stop receiving new messages there. The merge can only be undone from the bridge with !sms unmerge.</string>
+    <string name="merge_threads_succeeded">Merged into %1$s</string>
+    <string name="merge_threads_failed">Merge failed: %1$s</string>
     <string name="type_a_message">Type a message…</string>
     <string name="message_not_sent_short">Message not sent</string>
     <string name="message_not_sent_touch_retry">Not sent. Touch to retry.</string>

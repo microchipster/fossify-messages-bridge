@@ -101,6 +101,8 @@ object ControlContract {
     const val FIELD_PROVISIONED = "provisioned"
     const val FIELD_PROVISIONED_AT_MS = "provisioned_at_ms"
     const val FIELD_APPLIED = "applied"
+    const val FIELD_SEND_LONG_MESSAGE_MMS = "send_long_message_mms"
+    const val FIELD_SEND_GROUP_MESSAGE_MMS = "send_group_message_mms"
 
     /** The configuration keys `control.CONFIG` accepts; anything else is rejected. */
     val CONFIG_KEYS = setOf(
@@ -118,7 +120,9 @@ object ControlContract {
      * The bootstrap keys `control.PROVISION` accepts; anything else is
      * rejected. The static bridge token is deliberately absent - provisioning
      * sets the control surface, and a bridge token can be applied later with
-     * `control.CONFIG`.
+     * `control.CONFIG`. The two message-format preferences are included so a
+     * scripted install can decide between concatenated SMS (default) and MMS
+     * without a UI round-trip (see `docs/mms-interop.md`).
      */
     val PROVISION_KEYS = setOf(
         FIELD_BRIDGE_ENABLED,
@@ -128,10 +132,17 @@ object ControlContract {
         FIELD_BRIDGE_BASE_URL,
         FIELD_CONTROL_ENABLED,
         FIELD_CONTROL_TOKEN,
+        FIELD_SEND_LONG_MESSAGE_MMS,
+        FIELD_SEND_GROUP_MESSAGE_MMS,
     )
 
-    private val BOOLEAN_CONFIG_KEYS = setOf(FIELD_BRIDGE_ENABLED, FIELD_CONTROL_ENABLED)
-    private val STRING_CONFIG_KEYS = setOf(
+    private val BOOLEAN_PAYLOAD_KEYS = setOf(
+        FIELD_BRIDGE_ENABLED,
+        FIELD_CONTROL_ENABLED,
+        FIELD_SEND_LONG_MESSAGE_MMS,
+        FIELD_SEND_GROUP_MESSAGE_MMS,
+    )
+    private val STRING_PAYLOAD_KEYS = setOf(
         FIELD_BRIDGE_DEVICE_ID,
         FIELD_BRIDGE_TOKEN,
         FIELD_BRIDGE_HS_URL,
@@ -219,12 +230,12 @@ object ControlContract {
         if (unknown != null) {
             return "unknown config key '$unknown'"
         }
-        for (key in BOOLEAN_CONFIG_KEYS) {
+        for (key in BOOLEAN_PAYLOAD_KEYS) {
             if (payload.containsKey(key) && booleanValue(payload, key) == null) {
                 return "config key '$key' must be a boolean"
             }
         }
-        for (key in STRING_CONFIG_KEYS) {
+        for (key in STRING_PAYLOAD_KEYS) {
             if (payload.containsKey(key) && stringValue(payload, key) == null) {
                 return "config key '$key' must be a string"
             }
