@@ -47,7 +47,11 @@ object PairingClient {
     const val PAIRING_HOST = "pair"
 
     private const val TAG = "PairingClient"
-    private const val WELL_KNOWN_KEY = "chat.<namespace>.bridge.sms_mms"
+
+    // Bridge discovery keys look like `chat.<namespace>.bridge.sms_mms`; any
+    // namespace is accepted so no single deployment name is hard-coded.
+    private const val WELL_KNOWN_KEY_PREFIX = "chat."
+    private const val WELL_KNOWN_KEY_SUFFIX = ".bridge.sms_mms"
     private const val DISCOVERY_TIMEOUT_MS = 15_000
 
     private val json = Json {
@@ -192,9 +196,9 @@ object PairingClient {
     }
 
     /**
-     * Resolves the bridge base URL from `{hs}/.well-known/matrix/client` key
-     * `chat.<namespace>.bridge.sms_mms`. Returns null when discovery fails; a
-     * manual URL always takes precedence over this.
+     * Resolves the bridge base URL from the `{hs}/.well-known/matrix/client`
+     * entries advertised as `chat.<namespace>.bridge.sms_mms`. Returns null
+     * when discovery fails; a manual URL always takes precedence over this.
      */
     fun discoverBridgeBaseUrl(homeserverUrl: String): String? {
         val hsUrl = PairingHttp.normalizeUrl(homeserverUrl) ?: return null
@@ -230,14 +234,22 @@ object PairingClient {
             Log.w(TAG, "well-known payload is not valid JSON", e)
             null
         } ?: return null
-        val entry = root[WELL_KNOWN_KEY] as? JsonObject ?: return null
-        val url = ((entry["url"] as? JsonPrimitive)?.contentOrNull).orEmpty().trim()
-        val version = (entry["protocol_version"] as? JsonPrimitive)?.intOrNull
-        if (url.isEmpty() || (version != null && version != PROTOCOL_VERSION)) {
-            Log.w(TAG, "well-known does not advertise a usable v$PROTOCOL_VERSION bridge URL")
-            return null
+
+        // Deployments advertise themselves under a `chat.<namespace>.bridge.sms_mms`
+        // key; accept any namespace instead of hard-coding a single deployment.
+        for ((key, value) in root) {
+            if (!key.startsWith(WELL_KNOWN_KEY_PREFIX) || !key.endsWith(WELL_KNOWN_KEY_SUFFIX)) {
+                continue
+            }
+            val entry = value as? JsonObject
+            val url = ((entry?.get("url") as? JsonPrimitive)?.contentOrNull).orEmpty().trim()
+            val version = (entry?.get("protocol_version") as? JsonPrimitive)?.intOrNull
+            if (url.isNotEmpty() && (version == null || version == PROTOCOL_VERSION)) {
+                return url
+            }
         }
-        return url
+        Log.w(TAG, "well-known does not advertise a usable v$PROTOCOL_VERSION bridge URL")
+        return null
     }
 
     /**
