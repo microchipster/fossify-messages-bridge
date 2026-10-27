@@ -61,6 +61,7 @@ import org.fossify.commons.extensions.beVisibleIf
 import org.fossify.commons.extensions.copyToClipboard
 import org.fossify.commons.extensions.darkenColor
 import org.fossify.commons.extensions.formatDate
+import org.fossify.commons.extensions.getAlertDialogBuilder
 import org.fossify.commons.extensions.getBottomNavigationBackgroundColor
 import org.fossify.commons.extensions.getContrastColor
 import org.fossify.commons.extensions.getFilenameFromPath
@@ -140,6 +141,7 @@ import org.fossify.messages.extensions.markMessageRead
 import org.fossify.messages.extensions.markThreadMessagesRead
 import org.fossify.messages.extensions.markThreadMessagesUnread
 import org.fossify.messages.extensions.messagesDB
+import org.fossify.messages.extensions.messagingUtils
 import org.fossify.messages.extensions.moveMessageToRecycleBin
 import org.fossify.messages.extensions.onScroll
 import org.fossify.messages.extensions.removeDiacriticsIfNeeded
@@ -176,6 +178,8 @@ import org.fossify.messages.helpers.THREAD_ID
 import org.fossify.messages.helpers.THREAD_NUMBER
 import org.fossify.messages.helpers.THREAD_TEXT
 import org.fossify.messages.helpers.THREAD_TITLE
+import org.fossify.messages.helpers.TapbackCandidate
+import org.fossify.messages.helpers.Tapbacks
 import org.fossify.messages.helpers.generateRandomId
 import org.fossify.messages.helpers.refreshConversations
 import org.fossify.messages.helpers.refreshMessages
@@ -596,7 +600,8 @@ class ThreadActivity : SimpleActivity() {
                         toRecycleBin,
                         fromRecycleBin
                     )
-                }
+                },
+                reactToMessage = { reactToMessage(it) }
             )
 
             binding.threadMessagesList.adapter = currAdapter
@@ -1337,6 +1342,7 @@ class ThreadActivity : SimpleActivity() {
         }
 
         val messageSnapshot = messages.toSortedMessages()
+        val resolvedTapbacks = Tapbacks.resolve(messageSnapshot.map { it.toTapbackCandidate() })
         val items = ArrayList<ThreadItem>()
 
         val subscriptionIdToSimId = HashMap<Int, String>()
@@ -1348,9 +1354,19 @@ class ThreadActivity : SimpleActivity() {
         var prevDateTime = 0
         var prevSIMId = -2
         var hadUnreadItems = false
-        val cnt = messageSnapshot.size
-        for (i in 0 until cnt) {
-            val message = messageSnapshot.getOrNull(i) ?: continue
+        var lastVisibleMessage: Message? = null
+        for (message in messageSnapshot) {
+            if (!message.read) {
+                hadUnreadItems = true
+                markMessageRead(message.id, message.isMMS)
+                conversationsDB.markRead(threadId)
+            }
+
+            // matched tapbacks are shown as a reaction chip on the message they quote
+            if (resolvedTapbacks.hiddenKeys.contains(message.getStableId())) {
+                continue
+            }
+
             // do not show the date/time above every message, only if the difference between the 2 messages is at least MIN_DATE_TIME_DIFF_SECS,
             // or if the message is sent from a different SIM
             if (shouldShowThreadDateTime(message, prevDateTime, prevSIMId)) {
@@ -1358,7 +1374,15 @@ class ThreadActivity : SimpleActivity() {
                 items.add(ThreadDateTime(message.date, simCardID))
                 prevDateTime = message.date
             }
-            items.add(message)
+
+            val messageReactions = resolvedTapbacks.reactions[message.getStableId()].orEmpty()
+            val visibleMessage = if (messageReactions.isEmpty()) {
+                message
+            } else {
+                message.copy().apply { reactions = messageReactions }
+            }
+            items.add(visibleMessage)
+            lastVisibleMessage = visibleMessage
 
             if (message.type == Telephony.Sms.MESSAGE_TYPE_FAILED) {
                 items.add(ThreadError(message.id, message.body))
@@ -1368,21 +1392,16 @@ class ThreadActivity : SimpleActivity() {
                 items.add(ThreadSending(message.id))
             }
 
-            if (!message.read) {
-                hadUnreadItems = true
-                markMessageRead(message.id, message.isMMS)
-                conversationsDB.markRead(threadId)
-            }
-
-            if (i == cnt - 1 && (message.type == Telephony.Sms.MESSAGE_TYPE_SENT)) {
-                items.add(
-                    ThreadSent(
-                        messageId = message.id,
-                        delivered = message.status == Telephony.Sms.STATUS_COMPLETE
-                    )
-                )
-            }
             prevSIMId = message.subscriptionId
+        }
+
+        lastVisibleMessage?.takeIf { it.type == Telephony.Sms.MESSAGE_TYPE_SENT }?.let { message ->
+            items.add(
+                ThreadSent(
+                    messageId = message.id,
+                    delivered = message.status == Telephony.Sms.STATUS_COMPLETE
+                )
+            )
         }
 
         if (hadUnreadItems) {
@@ -1390,6 +1409,54 @@ class ThreadActivity : SimpleActivity() {
         }
 
         return items
+    }
+
+    private fun Message.toTapbackCandidate() = TapbackCandidate(
+        key = getStableId(),
+        body = body,
+        hasAttachment = attachment?.attachments?.isNotEmpty() == true
+    )
+
+    private fun reactToMessage(message: Message) {
+        val labels = Tapbacks.choices.map { "${it.emoji} ${getString(it.titleRes)}" }.toTypedArray()
+        getAlertDialogBuilder()
+            .setTitle(R.string.react)
+            .setItems(labels) { _, index -> sendTapback(message, Tapbacks.choices[index].name) }
+            .show()
+    }
+
+    // The tapback text is parsed by the bridge (`connector/tapback.go`), so it is
+    // deliberately always English, sent as a plain SMS even in group threads.
+    private fun sendTapback(message: Message, name: String) {
+        val mimetype = message.attachment?.attachments?.firstOrNull()?.mimetype.orEmpty()
+        val text = Tapbacks.format(name, message.body, Tapbacks.mediaLabel(mimetype))
+        val addresses = participants.getAddresses()
+        if (text.isEmpty() || addresses.isEmpty()) {
+            return
+        }
+
+        val subscriptionId = availableSIMCards.getOrNull(currentSIMCardIndex)?.subscriptionId
+            ?: SmsManager.getDefaultSmsSubscriptionId()
+
+        try {
+            refreshedSinceSent = false
+            messagingUtils.sendSmsMessage(
+                text = text,
+                addresses = addresses.toSet(),
+                subId = subscriptionId,
+                requireDeliveryReport = config.enableDeliveryReports
+            )
+            ensureBackgroundThread {
+                val existingMessages = messages.toSortedMessages()
+                val newMessages = getMessages(threadId, limit = 1)
+                    .filterNotInByKey(existingMessages) { it.getStableId() }
+                for (newMessage in newMessages) {
+                    insertOrUpdateMessage(newMessage)
+                }
+            }
+        } catch (e: Exception) {
+            showErrorToast(e)
+        }
     }
 
     private fun launchActivityForResult(

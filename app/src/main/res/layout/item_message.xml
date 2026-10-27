@@ -65,5 +65,20 @@
             android:textSize="@dimen/normal_text_size"
             tools:drawableEndCompat="@drawable/scheduled_message_icon"
             tools:text="Message content" />
+
+        <org.fossify.commons.views.MyTextView
+            android:id="@+id/thread_message_reactions"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_alignEnd="@id/thread_message_body"
+            android:layout_below="@id/thread_message_body"
+            android:layout_marginTop="@dimen/tiny_margin"
+            android:background="@drawable/reaction_chip_background"
+            android:paddingHorizontal="@dimen/medium_margin"
+            android:paddingVertical="@dimen/small_margin"
+            android:textSize="@dimen/smaller_text_size"
+            android:visibility="gone"
+            tools:text="Liked"
+            tools:visibility="visible" />
     </RelativeLayout>
 </androidx.constraintlayout.widget.ConstraintLayout>

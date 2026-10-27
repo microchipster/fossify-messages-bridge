@@ -81,6 +81,7 @@ import org.fossify.messages.helpers.THREAD_SENT_MESSAGE
 import org.fossify.messages.helpers.THREAD_SENT_MESSAGE_ERROR
 import org.fossify.messages.helpers.THREAD_SENT_MESSAGE_SENDING
 import org.fossify.messages.helpers.THREAD_SENT_MESSAGE_SENT
+import org.fossify.messages.helpers.Tapbacks
 import org.fossify.messages.helpers.generateStableId
 import org.fossify.messages.helpers.setupAudio
 import org.fossify.messages.helpers.setupDocumentPreview
@@ -99,7 +100,8 @@ class ThreadAdapter(
     recyclerView: MyRecyclerView,
     itemClick: (Any) -> Unit,
     val isRecycleBin: Boolean,
-    val deleteMessages: (messages: List<Message>, toRecycleBin: Boolean, fromRecycleBin: Boolean) -> Unit
+    val deleteMessages: (messages: List<Message>, toRecycleBin: Boolean, fromRecycleBin: Boolean) -> Unit,
+    val reactToMessage: (Message) -> Unit
 ) : MyRecyclerViewListAdapter<ThreadItem>(activity, recyclerView, ThreadItemDiffCallback(), itemClick) {
     private var fontSize = activity.getTextSize()
 
@@ -109,6 +111,7 @@ class ThreadAdapter(
 
     companion object {
         private const val MAX_MEDIA_HEIGHT_RATIO = 3
+        private const val REACTION_TEXT_SIZE_DIFF = 4
         private const val SIM_BITS = 21
         private const val SIM_MASK = (1L shl SIM_BITS) - 1
     }
@@ -125,6 +128,9 @@ class ThreadAdapter(
         val isOneItemSelected = isOneItemSelected()
         val selectedMessages = getSelectedItems().filterIsInstance<Message>()
         val hasText = selectedMessages.any { it.body.isNotEmpty() }
+        val canReact = selectedMessages.size == 1 &&
+            !selectedMessages.first().isScheduled &&
+            Tapbacks.parse(selectedMessages.first().body) == null
         val showSaveAs = getSelectedItems().all {
             it is Message && (it.attachment?.attachments?.size ?: 0) > 0
         } && getSelectedAttachments().isNotEmpty()
@@ -134,6 +140,7 @@ class ThreadAdapter(
             findItem(R.id.cab_save_as).isVisible = showSaveAs
             findItem(R.id.cab_share).isVisible = isOneItemSelected && hasText
             findItem(R.id.cab_forward_message).isVisible = isOneItemSelected
+            findItem(R.id.cab_react).isVisible = canReact && !isRecycleBin
             findItem(R.id.cab_select_text).isVisible = isOneItemSelected && hasText
             findItem(R.id.cab_properties).isVisible = isOneItemSelected
             findItem(R.id.cab_restore).isVisible = isRecycleBin
@@ -150,6 +157,7 @@ class ThreadAdapter(
             R.id.cab_save_as -> saveAs()
             R.id.cab_share -> shareText()
             R.id.cab_forward_message -> forwardMessage()
+            R.id.cab_react -> reactToSelectedMessage()
             R.id.cab_select_text -> selectText()
             R.id.cab_delete -> askConfirmDelete()
             R.id.cab_restore -> askConfirmRestore()
@@ -270,6 +278,11 @@ class ThreadAdapter(
         }
     }
 
+    private fun reactToSelectedMessage() {
+        val message = getSelectedItems().firstOrNull() as? Message ?: return
+        reactToMessage.invoke(message)
+    }
+
     private fun showMessageDetails() {
         val message = getSelectedItems().firstOrNull() as? Message ?: return
         MessageDetailsDialog(activity, message)
@@ -383,6 +396,13 @@ class ThreadAdapter(
                 setOnClickListener {
                     holder.viewClicked(message)
                 }
+            }
+
+            threadMessageReactions.apply {
+                beVisibleIf(message.reactions.isNotEmpty())
+                text = message.reactions.joinToString(" ")
+                setTextSize(TypedValue.COMPLEX_UNIT_PX, fontSize - REACTION_TEXT_SIZE_DIFF)
+                setTextColor(textColor)
             }
 
             if (message.isReceivedMessage()) {
