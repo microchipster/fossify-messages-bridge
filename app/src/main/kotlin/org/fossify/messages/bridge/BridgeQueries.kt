@@ -7,6 +7,7 @@
 package org.fossify.messages.bridge
 
 import android.Manifest
+import android.app.role.RoleManager
 import android.content.ContentValues
 import android.content.Context
 import android.content.pm.PackageManager
@@ -226,11 +227,7 @@ object BridgeQueries {
     )
 
     fun health(context: Context): BridgeHealth {
-        val defaultSmsApp = try {
-            Sms.getDefaultSmsPackage(context).orEmpty()
-        } catch (_: Exception) {
-            ""
-        }
+        val defaultSmsApp = defaultSmsPackage(context)
         val isDefaultSmsApp = defaultSmsApp == context.packageName
         val capabilities = mutableListOf("threads", "messages", "mms-parts", "events", "subscriptions", "send-sms")
         if (isDefaultSmsApp) {
@@ -261,13 +258,36 @@ object BridgeQueries {
         )
     }
 
+    /**
+     * The current default SMS package, resolved through the RoleManager when
+     * the deprecated telephony lookup disagrees on a device.
+     */
+    private fun defaultSmsPackage(context: Context): String {
+        val fromTelephony = try {
+            Sms.getDefaultSmsPackage(context).orEmpty()
+        } catch (_: Exception) {
+            ""
+        }
+        if (fromTelephony == context.packageName) {
+            return fromTelephony
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val roleHeld = try {
+                (context.getSystemService(Context.ROLE_SERVICE) as? RoleManager)
+                    ?.isRoleHeld(RoleManager.ROLE_SMS) == true
+            } catch (_: Exception) {
+                false
+            }
+            if (roleHeld) {
+                return context.packageName
+            }
+        }
+        return fromTelephony
+    }
+
     /** True while this fork holds the default SMS role, required for MMS send and read-state writeback. */
     fun isDefaultSmsApp(context: Context): Boolean {
-        return try {
-            Sms.getDefaultSmsPackage(context) == context.packageName
-        } catch (_: Exception) {
-            false
-        }
+        return defaultSmsPackage(context) == context.packageName
     }
 
     fun subscriptions(context: Context): List<BridgeSubscription> {
