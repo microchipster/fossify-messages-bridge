@@ -30,6 +30,10 @@ import org.fossify.commons.helpers.isQPlus
 import org.fossify.commons.helpers.isTiramisuPlus
 import org.fossify.commons.models.RadioItem
 import org.fossify.messages.R
+import org.fossify.messages.bridge.BridgeConfig
+import org.fossify.messages.bridge.CdnDiscovery
+import org.fossify.messages.bridge.CdnExpiry
+import org.fossify.messages.bridge.CdnSettings
 import org.fossify.messages.bridge.PairingActivity
 import org.fossify.messages.bridge.PairingStore
 import org.fossify.messages.databinding.ActivitySettingsBinding
@@ -129,6 +133,7 @@ class SettingsActivity : SimpleActivity() {
         setupMessagesExport()
         setupMessagesImport()
         setupBridgePairing()
+        setupCdnSettings()
         updateTextColors(binding.settingsNestedScrollview)
 
         if (
@@ -145,7 +150,8 @@ class SettingsActivity : SimpleActivity() {
             binding.settingsArchivedMessagesLabel,
             binding.settingsRecycleBinLabel,
             binding.settingsSecurityLabel,
-            binding.settingsMigratingLabel
+            binding.settingsMigratingLabel,
+            binding.settingsBridgeLabel
         ).forEach {
             it.setTextColor(getProperPrimaryColor())
         }
@@ -175,6 +181,67 @@ class SettingsActivity : SimpleActivity() {
         settingsBridgePairingHolder.setOnClickListener {
             startActivity(Intent(this@SettingsActivity, PairingActivity::class.java))
         }
+    }
+
+    private fun setupCdnSettings() = binding.apply {
+        val bridge = BridgeConfig.newInstance(this@SettingsActivity)
+
+        settingsCdnAllowLinks.isChecked = bridge.cdnAllowLinks
+        settingsCdnAllowLinksHolder.setOnClickListener {
+            settingsCdnAllowLinks.toggle()
+            bridge.cdnAllowLinks = settingsCdnAllowLinks.isChecked
+        }
+
+        settingsCdnAskCompress.isChecked = bridge.cdnAskCompress
+        settingsCdnAskCompressHolder.setOnClickListener {
+            settingsCdnAskCompress.toggle()
+            bridge.cdnAskCompress = settingsCdnAskCompress.isChecked
+        }
+
+        settingsCdnUploadLimit.text = getString(R.string.cdn_upload_limit_mb, bridge.cdnUploadLimitMb)
+        settingsCdnUploadLimitHolder.setOnClickListener {
+            val items = arrayListOf<RadioItem>().apply {
+                CdnSettings.UPLOAD_LIMIT_CHOICES.forEach { mb ->
+                    add(RadioItem(mb, getString(R.string.cdn_upload_limit_mb, mb)))
+                }
+            }
+            RadioGroupDialog(this@SettingsActivity, items, bridge.cdnUploadLimitMb) {
+                bridge.cdnUploadLimitMb = it as Int
+                settingsCdnUploadLimit.text = getString(R.string.cdn_upload_limit_mb, bridge.cdnUploadLimitMb)
+            }
+        }
+
+        settingsCdnExpiry.text = getString(R.string.cdn_expiry_days, bridge.cdnExpiryDays)
+        settingsCdnExpiryHolder.setOnClickListener {
+            val items = arrayListOf<RadioItem>().apply {
+                CdnExpiry.DAY_CHOICES.forEach { days ->
+                    add(RadioItem(days, getString(R.string.cdn_expiry_days, days)))
+                }
+            }
+            RadioGroupDialog(this@SettingsActivity, items, bridge.cdnExpiryDays) {
+                bridge.cdnExpiryDays = it as Int
+                settingsCdnExpiry.text = getString(R.string.cdn_expiry_days, bridge.cdnExpiryDays)
+            }
+        }
+
+        settingsCdnAskExpiry.isChecked = bridge.cdnAskExpiry
+        settingsCdnAskExpiryHolder.setOnClickListener {
+            settingsCdnAskExpiry.toggle()
+            bridge.cdnAskExpiry = settingsCdnAskExpiry.isChecked
+        }
+
+        setCdnLinksAvailability(CdnDiscovery.cachedBaseUrl(this@SettingsActivity))
+        ensureBackgroundThread {
+            val baseUrl = CdnDiscovery.refresh(this@SettingsActivity)
+            runOnUiThread { setCdnLinksAvailability(baseUrl) }
+        }
+    }
+
+    /** The link path stays inert until the bridge advertises a `cdn_base_url`. */
+    private fun setCdnLinksAvailability(cdnBaseUrl: String) = binding.apply {
+        val available = cdnBaseUrl.isNotEmpty()
+        settingsCdnAllowLinks.isEnabled = available
+        settingsCdnAllowLinksHolder.isEnabled = available
     }
 
     override fun onPause() {

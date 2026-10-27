@@ -572,6 +572,13 @@
                 android:id="@+id/settings_import_messages_divider"
                 layout="@layout/divider" />
 
+            <TextView
+                android:id="@+id/settings_bridge_label"
+                style="@style/SettingsSectionLabelStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/bridge_settings" />
+
             <RelativeLayout
                 android:id="@+id/settings_bridge_pairing_holder"
                 style="@style/SettingsHolderTextViewStyle"
@@ -592,6 +599,97 @@
                     android:layout_height="wrap_content"
                     android:layout_below="@id/settings_bridge_pairing_label"
                     tools:text="@string/bridge_pairing_status_not_paired" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_cdn_allow_links_holder"
+                style="@style/SettingsHolderSwitchStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyMaterialSwitch
+                    android:id="@+id/settings_cdn_allow_links"
+                    style="@style/SettingsSwitchStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/cdn_allow_links" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_cdn_ask_compress_holder"
+                style="@style/SettingsHolderSwitchStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyMaterialSwitch
+                    android:id="@+id/settings_cdn_ask_compress"
+                    style="@style/SettingsSwitchStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/cdn_ask_compress" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_cdn_upload_limit_holder"
+                style="@style/SettingsHolderTextViewStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_cdn_upload_limit_label"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/cdn_upload_limit" />
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_cdn_upload_limit"
+                    style="@style/SettingsTextValueStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/settings_cdn_upload_limit_label"
+                    tools:text="50 MB" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_cdn_expiry_holder"
+                style="@style/SettingsHolderTextViewStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_cdn_expiry_label"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/cdn_expiry" />
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_cdn_expiry"
+                    style="@style/SettingsTextValueStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/settings_cdn_expiry_label"
+                    tools:text="30 days" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_cdn_ask_expiry_holder"
+                style="@style/SettingsHolderSwitchStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyMaterialSwitch
+                    android:id="@+id/settings_cdn_ask_expiry"
+                    style="@style/SettingsSwitchStyle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/cdn_ask_expiry" />
 
             </RelativeLayout>
         </LinearLayout>

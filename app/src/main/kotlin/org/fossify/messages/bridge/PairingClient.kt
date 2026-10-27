@@ -25,6 +25,7 @@ data class PairingResult(
     val user: String,
     val homeserverUrl: String,
     val bridgeBaseUrl: String,
+    val cdnBaseUrl: String = "",
 )
 
 /**
@@ -74,6 +75,7 @@ object PairingClient {
         @SerialName("bridge_name") val bridgeName: String = "",
         @SerialName("homeserver_url") val homeserverUrl: String = "",
         @SerialName("pairing_enabled") val pairingEnabled: Boolean = true,
+        @SerialName("cdn_base_url") val cdnBaseUrl: String = "",
     )
 
     @Serializable
@@ -117,6 +119,7 @@ object PairingClient {
         val user: PairingUser? = null,
         @SerialName("homeserver_url") val homeserverUrl: String = "",
         val bridge: PairingBridge? = null,
+        @SerialName("cdn_base_url") val cdnBaseUrl: String = "",
     )
 
     /**
@@ -135,7 +138,7 @@ object PairingClient {
             ?: fail("bad_request", "missing or invalid homeserver URL")
         val bridgeBaseUrl = resolveBridgeBaseUrl(hsUrl, bridgeUrlOverride)
 
-        checkBridgeInfo(bridgeBaseUrl, hsUrl)
+        val info = checkBridgeInfo(bridgeBaseUrl, hsUrl)
 
         val deviceId = deviceId(context)
         val clientNonce = PairingKeys.randomNonce()
@@ -177,6 +180,7 @@ object PairingClient {
         val resolvedBridgeUrl = complete.bridge?.baseUrl?.takeIf { it.isNotBlank() } ?: bridgeBaseUrl
         val resolvedHsUrl = complete.homeserverUrl.ifBlank { hsUrl }
         val resolvedDeviceId = complete.deviceId.ifBlank { deviceId }
+        val resolvedCdnBaseUrl = complete.cdnBaseUrl.ifBlank { info.cdnBaseUrl }.trim()
         val user = complete.user?.mxid.orEmpty()
 
         PairingStore.newInstance(context).savePairing(
@@ -185,6 +189,7 @@ object PairingClient {
             deviceId = resolvedDeviceId,
             user = user,
             token = complete.token,
+            cdnBaseUrl = resolvedCdnBaseUrl,
         )
         Log.i(TAG, "paired as ${user.ifEmpty { "unknown user" }} (device $resolvedDeviceId) via $resolvedBridgeUrl")
         return PairingResult(
@@ -192,6 +197,7 @@ object PairingClient {
             user = user,
             homeserverUrl = resolvedHsUrl,
             bridgeBaseUrl = resolvedBridgeUrl,
+            cdnBaseUrl = resolvedCdnBaseUrl,
         )
     }
 
@@ -272,7 +278,7 @@ object PairingClient {
         return discovered
     }
 
-    private fun checkBridgeInfo(bridgeBaseUrl: String, homeserverUrl: String) {
+    private fun checkBridgeInfo(bridgeBaseUrl: String, homeserverUrl: String): PairingInfoResponse {
         val info = decode(
             PairingHttp.requestJson(PairingHttp.endpoint(bridgeBaseUrl, "/_smsmms/v1/info"), "GET"),
             serializer<PairingInfoResponse>(),
@@ -288,6 +294,7 @@ object PairingClient {
         if (info.homeserverUrl.isNotBlank() && bridgeHomeserver != payloadHomeserver) {
             Log.w(TAG, "bridge reports a different homeserver (${info.homeserverUrl}) than the payload")
         }
+        return info
     }
 
     // Any decode failure must become a generic PairingException, not leak serializer internals.
