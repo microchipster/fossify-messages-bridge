@@ -2,11 +2,14 @@ package org.fossify.messages.extensions
 
 import android.app.Activity
 import android.content.ActivityNotFoundException
+import android.content.ContentResolver
 import android.content.Intent
 import android.net.Uri
 import android.provider.ContactsContract
+import android.webkit.MimeTypeMap
 import org.fossify.commons.activities.BaseSimpleActivity
 import org.fossify.commons.extensions.getMimeType
+import org.fossify.commons.extensions.getMyFileUri
 import org.fossify.commons.extensions.hideKeyboard
 import org.fossify.commons.extensions.isPackageInstalled
 import org.fossify.commons.extensions.launchActivityIntent
@@ -21,6 +24,7 @@ import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.models.SimpleContact
 import org.fossify.messages.activities.ConversationDetailsActivity
 import org.fossify.messages.helpers.THREAD_ID
+import java.io.File
 import java.util.Locale
 
 fun BaseSimpleActivity.dialNumber(phoneNumber: String, callback: (() -> Unit)? = null) {
@@ -43,6 +47,25 @@ fun BaseSimpleActivity.dialNumber(phoneNumber: String, callback: (() -> Unit)? =
 }
 
 fun Activity.launchViewIntent(uri: Uri, mimetype: String, filename: String) {
+    val cacheFile = getMmsPartViewFile(uri, mimetype)
+    if (cacheFile == null) {
+        startViewIntent(uri, mimetype, filename)
+        return
+    }
+
+    // MMS parts are served by the unexported telephony provider. Viewers that
+    // resolve any content URI against MediaStore (LineageOS Glimpse, for
+    // example) treat the part id as a media id and open an unrelated file, so
+    // hand them a cached copy of the actual part instead.
+    ensureBackgroundThread {
+        val cachedUri = cacheMmsPart(uri, cacheFile)
+        runOnUiThread {
+            startViewIntent(cachedUri ?: uri, mimetype, filename)
+        }
+    }
+}
+
+private fun Activity.startViewIntent(uri: Uri, mimetype: String, filename: String) {
     Intent().apply {
         action = Intent.ACTION_VIEW
         setDataAndType(uri, mimetype.lowercase(Locale.getDefault()))
@@ -54,7 +77,7 @@ fun Activity.launchViewIntent(uri: Uri, mimetype: String, filename: String) {
         } catch (_: ActivityNotFoundException) {
             val newMimetype = filename.getMimeType()
             if (newMimetype.isNotEmpty() && mimetype != newMimetype) {
-                launchViewIntent(uri, newMimetype, filename)
+                startViewIntent(uri, newMimetype, filename)
             } else {
                 toast(org.fossify.commons.R.string.no_app_found)
             }
@@ -62,6 +85,56 @@ fun Activity.launchViewIntent(uri: Uri, mimetype: String, filename: String) {
             showErrorToast(e)
         }
     }
+}
+
+// Returns a cache file for `content://mms/part/<id>` URIs, or null for
+// everything else.
+private fun Activity.getMmsPartViewFile(uri: Uri, mimetype: String): File? {
+    if (uri.scheme != ContentResolver.SCHEME_CONTENT || uri.authority != "mms") {
+        return null
+    }
+
+    val segments = uri.pathSegments
+    if (segments.size != 2 || segments[0] != "part") {
+        return null
+    }
+
+    val partId = segments[1].toLongOrNull() ?: return null
+    val extension = MimeTypeMap.getSingleton()
+        .getExtensionFromMimeType(mimetype.lowercase(Locale.getDefault()))
+    val suffix = if (extension.isNullOrEmpty()) "" else ".$extension"
+    return File(File(cacheDir, "view"), "part_$partId$suffix")
+}
+
+private fun Activity.cacheMmsPart(uri: Uri, file: File): Uri? {
+    val cachedFile = if (file.length() > 0L) file else copyMmsPart(uri, file)
+    return cachedFile?.let { getMyFileUri(it) }
+}
+
+private fun Activity.copyMmsPart(uri: Uri, file: File): File? {
+    val directory = file.parentFile ?: return null
+    directory.mkdirs()
+    val tempFile = File(directory, "${file.name}.tmp")
+
+    try {
+        contentResolver.openInputStream(uri)?.use { input ->
+            tempFile.outputStream().use { output -> input.copyTo(output) }
+        }
+    } catch (_: Exception) {
+        tempFile.delete()
+        return null
+    }
+
+    if (!tempFile.exists() || tempFile.length() == 0L) {
+        tempFile.delete()
+        return null
+    }
+
+    if (!tempFile.renameTo(file)) {
+        tempFile.copyTo(file, overwrite = true)
+        tempFile.delete()
+    }
+    return file
 }
 
 fun Activity.startContactDetailsIntent(contact: SimpleContact) {
