@@ -53,6 +53,8 @@ import org.fossify.messages.activities.NewConversationActivity
 import org.fossify.messages.activities.SimpleActivity
 import org.fossify.messages.activities.ThreadActivity
 import org.fossify.messages.activities.VCardViewerActivity
+import org.fossify.messages.bridge.CdnAlbumRenderer
+import org.fossify.messages.bridge.CdnAlbumResult
 import org.fossify.messages.bridge.CdnDiscovery
 import org.fossify.messages.bridge.CdnLink
 import org.fossify.messages.bridge.CdnLinkDetector
@@ -95,6 +97,7 @@ import org.fossify.messages.helpers.generateStableId
 import org.fossify.messages.helpers.setupAudio
 import org.fossify.messages.helpers.setupDocumentPreview
 import org.fossify.messages.helpers.setupVCardPreview
+import org.fossify.messages.helpers.showCdnAlbumGrid
 import org.fossify.messages.helpers.showCdnError
 import org.fossify.messages.helpers.showCdnLoading
 import org.fossify.messages.helpers.showCdnMedia
@@ -480,9 +483,11 @@ class ThreadAdapter(
     /**
      * Renders a detected file-service link as an inline card: a placeholder
      * while the payload is fetched and decrypted, then a thumbnail or poster,
-     * the inline audio player or the attachment card. The card view is reused
-     * across binds and [CdnRenderStateMachine] drops an answer that was meant
-     * for the message this holder showed before.
+     * the inline audio player or the attachment card. When the id turns out
+     * not to be a single file, the album path tries its manifest and renders
+     * the gallery grid instead. The card view is reused across binds and
+     * [CdnRenderStateMachine] drops an answer that was meant for the message
+     * this holder showed before.
      */
     private fun setupCdnMediaView(holder: ThreadViewHolder, binding: ItemMessageBinding, message: Message, ref: CdnLinkRef) {
         val card = holder.cdnCard ?: ItemCdnMediaBinding.inflate(layoutInflater).also { holder.cdnCard = it }
@@ -502,22 +507,61 @@ class ThreadAdapter(
 
         val generation = holder.cdnState.rebind()
         CdnMediaRenderer.load(activity, ref, maxChatBubbleWidth) { result ->
-            if (!holder.cdnState.complete(generation, result is CdnRenderResult.Ready)) {
-                return@load
+            when (result) {
+                is CdnRenderResult.Ready -> if (holder.cdnState.complete(generation, true)) {
+                    card.showCdnMedia(
+                        activity = activity,
+                        uri = activity.getMyFileUri(result.media.file),
+                        media = result.media,
+                        bitmap = result.bitmap,
+                        maxPreviewWidth = maxChatBubbleWidth,
+                        onSelect = { holder.viewClicked(message) },
+                        onLongClick = { holder.viewLongClicked() },
+                        isSelecting = { actModeCallback.isSelectable }
+                    )
+                }
+
+                CdnRenderResult.NotAFile -> loadCdnAlbum(holder, card, message, ref, generation)
+                CdnRenderResult.Failed -> if (holder.cdnState.complete(generation, false)) {
+                    card.showCdnError()
+                }
             }
-            if (result is CdnRenderResult.Ready) {
-                card.showCdnMedia(
-                    activity = activity,
-                    uri = activity.getMyFileUri(result.media.file),
-                    media = result.media,
-                    bitmap = result.bitmap,
-                    maxPreviewWidth = maxChatBubbleWidth,
-                    onSelect = { holder.viewClicked(message) },
-                    onLongClick = { holder.viewLongClicked() },
-                    isSelecting = { actModeCallback.isSelectable }
-                )
-            } else {
-                card.showCdnError()
+        }
+    }
+
+    /**
+     * The album fallback of a link that is no single file: the decrypted
+     * manifest supplies the display order, then every cell fetches its own
+     * item under the subkey of its position. A cell answer is dropped when the
+     * row was rebound to another message in the meantime.
+     */
+    private fun loadCdnAlbum(holder: ThreadViewHolder, card: ItemCdnMediaBinding, message: Message, ref: CdnLinkRef, generation: Int) {
+        CdnAlbumRenderer.loadManifest(activity, ref) { result ->
+            when (result) {
+                is CdnAlbumResult.Ready -> {
+                    if (!holder.cdnState.complete(generation, true)) {
+                        return@loadManifest
+                    }
+                    val cells = card.showCdnAlbumGrid(
+                        activity = activity,
+                        items = result.items,
+                        maxWidthPx = maxChatBubbleWidth,
+                        onSelect = { holder.viewClicked(message) },
+                        onLongClick = { holder.viewLongClicked() },
+                        isSelecting = { actModeCallback.isSelectable },
+                    )
+                    cells.forEachIndexed { index, cell ->
+                        CdnAlbumRenderer.loadItem(activity, ref, index, cell.previewWidthPx) { itemResult ->
+                            if (holder.cdnState.isCurrent(generation)) {
+                                cell.show(itemResult)
+                            }
+                        }
+                    }
+                }
+
+                CdnAlbumResult.Failed -> if (holder.cdnState.complete(generation, false)) {
+                    card.showCdnError()
+                }
             }
         }
     }

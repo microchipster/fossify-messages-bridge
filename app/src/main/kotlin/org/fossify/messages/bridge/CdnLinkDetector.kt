@@ -11,6 +11,10 @@ package org.fossify.messages.bridge
  *
  * [url] is the link exactly as it appears in the text (without trailing
  * punctuation), [range] is its position inside the body.
+ *
+ * Albums share this shape and the id space of single files: only the fetch
+ * path tells them apart (`/raw` answers 404 for an album id, `/manifest` for a
+ * file id), so a [CdnLinkRef] is exactly what the album renderer consumes too.
  */
 internal data class CdnLinkRef(
     val baseUrl: String,
@@ -26,8 +30,10 @@ internal data class CdnLinkRef(
  * A link is `<base>/f/<id>#<key>`: the key must be present and decode to the
  * 32 bytes [CdnCrypto] expects, and the id must be shaped like a bridge id
  * (22..64 unpadded base64url characters), so a foreign URL, a truncated link
- * or a plain `#anchor` is never rendered. Only the base URLs passed in are
- * considered; the app never guesses a hostname of its own.
+ * or a plain `#anchor` is never rendered. Album links (one id, one fragment
+ * key, several encrypted items) are indistinguishable here and are detected
+ * by the same rules. Only the base URLs passed in are considered; the app
+ * never guesses a hostname of its own.
  *
  * Everything here is free of Android APIs, so the detection matrix is a JVM
  * test ([CdnLinkDetectorTest]).

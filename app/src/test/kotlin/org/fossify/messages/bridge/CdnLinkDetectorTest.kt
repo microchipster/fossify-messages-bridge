@@ -120,4 +120,22 @@ class CdnLinkDetectorTest {
         val dashesRef = CdnLinkDetector.detect("- $link -", bases)!!
         assertTrue(CdnLinkDetector.displayBody("- $link -", dashesRef).isNotEmpty())
     }
+
+    @Test
+    fun albumLinksShareTheDetectionRules() {
+        // An album link is a single-file link with more items behind the id:
+        // same base URL, same id space, same fragment key shape. Detection
+        // cannot (and must not) tell them apart; the fetch path does.
+        val albumLink = "$baseUrl/f/$id#$key"
+        val ref = CdnLinkDetector.detect("album 3 items (encrypted album): $albumLink", bases)
+
+        assertEquals(id, ref?.id)
+        assertEquals(key, ref?.keyFragment)
+        assertEquals(albumLink, ref?.url)
+        assertEquals(
+            "album 3 items (encrypted album)",
+            CdnLinkDetector.displayBody("album 3 items (encrypted album): $albumLink", ref!!),
+        )
+        assertTrue(CdnLinkDetector.isValidId(id))
+    }
 }

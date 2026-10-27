@@ -109,6 +109,10 @@ import org.fossify.messages.adapters.AttachmentsAdapter
 import org.fossify.messages.adapters.AutoCompleteTextViewAdapter
 import org.fossify.messages.adapters.ThreadAdapter
 import org.fossify.messages.bridge.BridgeConfig
+import org.fossify.messages.bridge.CdnAlbumAttachment
+import org.fossify.messages.bridge.CdnAlbumSendAction
+import org.fossify.messages.bridge.CdnAlbumSendInput
+import org.fossify.messages.bridge.CdnAlbumSendPath
 import org.fossify.messages.bridge.CdnClient
 import org.fossify.messages.bridge.CdnException
 import org.fossify.messages.bridge.CdnExpiry
@@ -433,19 +437,51 @@ class ThreadActivity : SimpleActivity() {
 
         if (requestCode == CAPTURE_PHOTO_INTENT && capturedImageUri != null) {
             addAttachment(capturedImageUri!!)
+        } else if (requestCode == PICK_PHOTO_INTENT || requestCode == PICK_VIDEO_INTENT) {
+            addPickedMedia(resultData)
         } else if (data != null) {
             when (requestCode) {
                 CAPTURE_VIDEO_INTENT,
                 PICK_DOCUMENT_INTENT,
-                CAPTURE_AUDIO_INTENT,
-                PICK_PHOTO_INTENT,
-                PICK_VIDEO_INTENT -> addAttachment(data)
+                CAPTURE_AUDIO_INTENT -> addAttachment(data)
 
                 PICK_CONTACT_INTENT -> addContactAttachment(data)
                 PICK_SAVE_FILE_INTENT -> saveAttachments(resultData)
                 PICK_SAVE_DIR_INTENT -> saveAttachments(resultData)
             }
         }
+    }
+
+    /**
+     * A gallery pick may carry several media URIs (`EXTRA_ALLOW_MULTIPLE`): a
+     * multi-selection takes the album decision first, a single one keeps the
+     * per-attachment file-service choice.
+     */
+    private fun addPickedMedia(resultData: Intent?) {
+        handlePickedUris(collectPickedUris(resultData))
+    }
+
+    private fun handlePickedUris(uris: List<Uri>) {
+        if (uris.size > 1 && handleCdnAlbumChoice(uris)) {
+            return
+        }
+        // Single picks and selections the album cannot carry keep the ordinary
+        // per-attachment path (size dialog, compression, MMS or refusal).
+        uris.forEach { addAttachment(it) }
+    }
+
+    /** Every URI of a pick result, from its `clipData` (multi-select) or its data. */
+    private fun collectPickedUris(resultData: Intent?): List<Uri> {
+        val uris = mutableListOf<Uri>()
+        resultData?.clipData?.let { clip ->
+            for (index in 0 until clip.itemCount) {
+                clip.getItemAt(index).uri?.let { uris += it }
+            }
+        }
+        if (uris.isEmpty()) {
+            resultData?.data?.let { uris += it }
+        }
+        return uris.distinct()
     }
 
     private fun setupCachedMessages(callback: () -> Unit) {
@@ -981,9 +1017,8 @@ class ThreadActivity : SimpleActivity() {
                 val uri = intent.getStringExtra(THREAD_ATTACHMENT_URI)!!.toUri()
                 addAttachment(uri)
             } else if (intent.extras?.containsKey(THREAD_ATTACHMENT_URIS) == true) {
-                (intent.getSerializableExtra(THREAD_ATTACHMENT_URIS) as? ArrayList<Uri>)?.forEach {
-                    addAttachment(it)
-                }
+                val uris = (intent.getSerializableExtra(THREAD_ATTACHMENT_URIS) as? ArrayList<Uri>).orEmpty()
+                handlePickedUris(uris)
             }
             scrollToBottomFab.setOnClickListener {
                 scrollToBottom()
@@ -1515,11 +1550,14 @@ class ThreadActivity : SimpleActivity() {
         launchActivityForResult(intent, CAPTURE_AUDIO_INTENT)
     }
 
-    private fun launchGetContentIntent(mimeTypes: Array<String>, requestCode: Int) {
+    private fun launchGetContentIntent(mimeTypes: Array<String>, requestCode: Int, allowMultiple: Boolean = false) {
         Intent(Intent.ACTION_GET_CONTENT).apply {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
             putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes)
+            if (allowMultiple) {
+                putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+            }
             launchActivityForResult(this, requestCode)
         }
     }
@@ -1690,6 +1728,69 @@ class ThreadActivity : SimpleActivity() {
         }
     }
 
+    /**
+     * Resolves the album decision for a multi-selection. Returns true when the
+     * decision took over (dialog or silent upload), false when the ordinary
+     * attach path should add the items separately.
+     */
+    private fun handleCdnAlbumChoice(uris: List<Uri>): Boolean {
+        val input = buildCdnAlbumSendInput(uris) ?: return false
+        return when (CdnAlbumSendPath.action(input)) {
+            CdnAlbumSendAction.LINK -> {
+                askCdnExpiryAndUploadAlbum(uris)
+                true
+            }
+            CdnAlbumSendAction.ASK -> {
+                showCdnAlbumSendChoice(uris)
+                true
+            }
+            CdnAlbumSendAction.NONE -> false
+        }
+    }
+
+    /**
+     * Builds the album decision input for a multi-selection; null when a size
+     * or a MIME type is unknown, so the container could not be framed. The
+     * comparison lives in [CdnAlbumSendPath.action].
+     */
+    private fun buildCdnAlbumSendInput(uris: List<Uri>): CdnAlbumSendInput? {
+        val settings = BridgeConfig.newInstance(this).cdnSettings()
+        val sizes = mutableListOf<Long>()
+        val mimeTypes = mutableListOf<String>()
+        for (uri in uris) {
+            val size = getFileSizeFromUri(uri)
+            val mimeType = contentResolver.getType(uri)
+            if (size <= 0 || mimeType.isNullOrEmpty()) {
+                return null
+            }
+            sizes += size
+            mimeTypes += mimeType
+        }
+        return CdnAlbumSendInput(
+            itemSizesBytes = sizes,
+            mimeTypes = mimeTypes,
+            mmsLimitBytes = config.mmsFileSizeLimit,
+            cdnAdvertised = isCdnAdvertised(),
+            settings = settings,
+        )
+    }
+
+    private fun showCdnAlbumSendChoice(uris: List<Uri>) {
+        getAlertDialogBuilder()
+            .setTitle(R.string.cdn_album_send_options)
+            .setItems(
+                arrayOf(getString(R.string.cdn_send_album), getString(R.string.cdn_send_separate))
+            ) { _, index ->
+                if (index == 0) {
+                    askCdnExpiryAndUploadAlbum(uris)
+                } else {
+                    uris.forEach { addAttachment(it, ignoreCdnChoice = true) }
+                }
+            }
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
+    }
+
     private fun askCdnExpiryAndUpload(uri: Uri) {
         val bridge = BridgeConfig.newInstance(this)
         if (!bridge.cdnAskExpiry) {
@@ -1703,6 +1804,78 @@ class ThreadActivity : SimpleActivity() {
         }
         RadioGroupDialog(activity = this, items = items, checkedItemId = bridge.cdnExpiryDays) { chosen ->
             uploadCdnFile(uri, chosen as Int)
+        }
+    }
+
+    private fun askCdnExpiryAndUploadAlbum(uris: List<Uri>) {
+        val bridge = BridgeConfig.newInstance(this)
+        if (!bridge.cdnAskExpiry) {
+            uploadCdnAlbum(uris, bridge.cdnExpiryDays)
+            return
+        }
+        val items = arrayListOf<RadioItem>().apply {
+            CdnExpiry.DAY_CHOICES.forEach { days ->
+                add(RadioItem(days, getString(R.string.cdn_expiry_days, days)))
+            }
+        }
+        RadioGroupDialog(activity = this, items = items, checkedItemId = bridge.cdnExpiryDays) { chosen ->
+            uploadCdnAlbum(uris, chosen as Int)
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun uploadCdnAlbum(uris: List<Uri>, expiryDays: Int) {
+        val bridge = BridgeConfig.newInstance(this)
+        val attachments = uris.mapNotNull { uri ->
+            val mimeType = contentResolver.getType(uri)
+            if (mimeType.isNullOrEmpty()) {
+                null
+            } else {
+                CdnAlbumAttachment(
+                    uri = uri,
+                    mimeType = mimeType,
+                    name = getFilenameFromUri(uri).ifBlank { "item" },
+                )
+            }
+        }
+        if (attachments.size != uris.size) {
+            toast(org.fossify.commons.R.string.unknown_error_occurred)
+            return
+        }
+        val progress = ProgressDialog(this).apply {
+            setTitle(R.string.cdn_album_uploading)
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            max = CDN_UPLOAD_PROGRESS_MAX
+            setProgress(0)
+            setCancelable(false)
+            show()
+        }
+        ensureBackgroundThread {
+            try {
+                val upload = CdnClient.uploadAlbum(
+                    context = this,
+                    attachments = attachments,
+                    expiryDays = expiryDays,
+                    maxPlaintextBytes = bridge.cdnSettings().uploadLimitBytes,
+                ) { written, knownTotal ->
+                    updateCdnUploadProgress(progress, written, knownTotal)
+                }
+                val link = upload.link(PairingStore.newInstance(this).cdnBaseUrl)
+                runOnUiThread {
+                    progress.dismiss()
+                    appendCdnAlbumLink(upload.itemCount, link)
+                }
+            } catch (e: CdnException) {
+                runOnUiThread {
+                    progress.dismiss()
+                    toast(cdnErrorMessage(e), Toast.LENGTH_LONG)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    progress.dismiss()
+                    showErrorToast(e)
+                }
+            }
         }
     }
 
@@ -1756,7 +1929,15 @@ class ThreadActivity : SimpleActivity() {
 
     /** Puts the link and a short file label into the message text. */
     private fun appendCdnLink(fileName: String, link: String) {
-        val label = getString(R.string.cdn_link_message, fileName, link)
+        appendLink(getString(R.string.cdn_link_message, fileName, link))
+    }
+
+    /** Puts the album link and its item count into the message text. */
+    private fun appendCdnAlbumLink(itemCount: Int, link: String) {
+        appendLink(getString(R.string.cdn_album_link_message, itemCount, link))
+    }
+
+    private fun appendLink(label: String) {
         val existing = binding.messageHolder.threadTypeMessage.value.trim()
         val text = if (existing.isEmpty()) label else "$existing $label"
         binding.messageHolder.threadTypeMessage.setText(text)
@@ -1767,6 +1948,9 @@ class ThreadActivity : SimpleActivity() {
 
     private fun cdnErrorMessage(error: CdnException): String = when (error.code) {
         CdnClient.CODE_TOO_LARGE, CdnClient.ERROR_FILE_TOO_LARGE -> getString(R.string.cdn_error_too_large)
+        CdnClient.ERROR_ALBUM_TOO_MANY_ITEMS -> getString(R.string.cdn_error_album_too_many)
+        CdnClient.ERROR_ALBUM_TOO_LARGE, CdnClient.ERROR_ALBUM_MANIFEST_TOO_LARGE ->
+            getString(R.string.cdn_error_album_too_large)
         CdnClient.ERROR_QUOTA_EXCEEDED -> getString(R.string.cdn_error_quota)
         CdnClient.ERROR_UNAUTHORIZED -> getString(R.string.cdn_error_unauthorized)
         CdnClient.CODE_NOT_CONFIGURED -> getString(R.string.cdn_error_not_configured)
@@ -2347,10 +2531,10 @@ class ThreadActivity : SimpleActivity() {
         ).forEach { it.setTextColor(textColor) }
 
         choosePhoto.setOnClickListener {
-            launchGetContentIntent(arrayOf("image/*"), PICK_PHOTO_INTENT)
+            launchGetContentIntent(arrayOf("image/*"), PICK_PHOTO_INTENT, allowMultiple = true)
         }
         chooseVideo.setOnClickListener {
-            launchGetContentIntent(arrayOf("video/*"), PICK_VIDEO_INTENT)
+            launchGetContentIntent(arrayOf("video/*"), PICK_VIDEO_INTENT, allowMultiple = true)
         }
         takePhoto.setOnClickListener {
             launchCapturePhotoIntent()

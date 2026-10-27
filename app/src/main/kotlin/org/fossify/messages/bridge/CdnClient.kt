@@ -33,6 +33,25 @@ internal data class CdnUpload(
     fun link(cdnBaseUrl: String): String = CdnLink.build(cdnBaseUrl, id, keyFragment)
 }
 
+/** One encrypted album, as returned by `POST <cdn_base_url>/f/albums`. */
+internal data class CdnAlbumUpload(
+    val id: String,
+    val size: Long,
+    val itemCount: Int,
+    val expiresAtMs: Long,
+    val keyFragment: String,
+) {
+    /** The shareable album link; it has the shape of a single-file link. */
+    fun link(cdnBaseUrl: String): String = CdnLink.build(cdnBaseUrl, id, keyFragment)
+}
+
+/** One selected attachment of an album upload, in display (and index) order. */
+internal data class CdnAlbumAttachment(
+    val uri: Uri,
+    val mimeType: String,
+    val name: String,
+)
+
 /** A file-service failure: a bridge error code or one of the local [CdnClient] codes. */
 internal class CdnException(
     val code: String,
@@ -79,6 +98,15 @@ internal object CdnClient {
     /** Bridge: the paired-device token is not valid anymore. */
     const val ERROR_UNAUTHORIZED = "unauthorized"
 
+    /** Bridge: the album exceeds `cdn.max_album_items`. */
+    const val ERROR_ALBUM_TOO_MANY_ITEMS = "album_too_many_items"
+
+    /** Bridge: the album exceeds `cdn.max_album_bytes`. */
+    const val ERROR_ALBUM_TOO_LARGE = "album_too_large"
+
+    /** Bridge: the album manifest exceeds its 64 KiB cap. */
+    const val ERROR_ALBUM_MANIFEST_TOO_LARGE = "album_manifest_too_large"
+
     private const val TAG = "CdnClient"
     private const val CONNECT_TIMEOUT_MS = 30_000
     private const val UPLOAD_TIMEOUT_MS = 10 * 60 * 1000
@@ -101,6 +129,14 @@ internal object CdnClient {
     private data class UploadResponse(
         val id: String = "",
         val size: Long = 0,
+        @SerialName("expires_at_ms") val expiresAtMs: Long = 0,
+    )
+
+    @Serializable
+    private data class AlbumUploadResponse(
+        val id: String = "",
+        val size: Long = 0,
+        val items: Int = 0,
         @SerialName("expires_at_ms") val expiresAtMs: Long = 0,
     )
 
@@ -142,6 +178,124 @@ internal object CdnClient {
         } catch (e: Exception) {
             Log.w(TAG, "file service upload failed", e)
             throw CdnException(CODE_NETWORK, message = e.message ?: "file service upload failed", cause = e)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /**
+     * Encrypts a multi-selection as one album and uploads it in a single
+     * request: every item is sealed under its own HKDF subkey (derived from
+     * one fresh fragment key), then the encrypted manifest follows, framed in
+     * the `CDNALB01` container. Blocking; items are streamed, never buffered.
+     *
+     * The item count, the per-item upload limit and the album caps are
+     * pre-checked against the bridge defaults; a deployment that lowered them
+     * answers with the matching bridge error instead.
+     */
+    @Suppress("TooGenericExceptionCaught", "ThrowsCount")
+    fun uploadAlbum(
+        context: Context,
+        attachments: List<CdnAlbumAttachment>,
+        expiryDays: Int,
+        maxPlaintextBytes: Long,
+        onProgress: ((written: Long, total: Long) -> Unit)? = null,
+    ): CdnAlbumUpload {
+        val store = PairingStore.newInstance(context)
+        val baseUrl = store.cdnBaseUrl
+        val token = store.token
+        requireService(baseUrl, token)
+
+        val sizes = attachments.map { context.getFileSizeFromUri(it.uri) }
+        val ciphertextLengths = requireAlbumItemsFit(sizes, maxPlaintextBytes)
+        val key = CdnCrypto.generateKey(secureRandom)
+        val manifest = attachments.mapIndexed { index, item ->
+            CdnAlbumItem(name = item.name, type = item.mimeType, size = sizes[index])
+        }
+        val manifestBody = CdnCrypto.encrypt(CdnCrypto.albumManifestKey(key), CdnAlbum.manifestJson(manifest))
+        requireAlbumFits(ciphertextLengths, manifestBody.size)
+        val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}/albums?expires=${CdnExpiry.durationSpec(expiryDays)}"
+        val totalPlaintext = sizes.sum()
+        val connection = openConnection(url, token)
+        try {
+            connection.outputStream.use { output ->
+                output.write(CdnAlbum.frameHeader(ciphertextLengths, manifestBody.size.toLong()))
+                var sealedPlaintext = 0L
+                attachments.forEachIndexed { index, attachment ->
+                    val written = openAttachment(context, attachment.uri).use { source ->
+                        encryptInto(output, source, CdnCrypto.albumItemKey(key, index), maxPlaintextBytes) { part ->
+                            onProgress?.invoke(sealedPlaintext + part, totalPlaintext)
+                        }
+                    }
+                    if (written != sizes[index]) {
+                        throw CdnException(CODE_NETWORK, message = "the attachment changed while it was uploaded")
+                    }
+                    sealedPlaintext += written
+                }
+                output.write(manifestBody)
+            }
+            return completeAlbumUpload(connection, key, ciphertextLengths.sum() + manifestBody.size)
+        } catch (e: CdnException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w(TAG, "file service album upload failed", e)
+            throw CdnException(CODE_NETWORK, message = e.message ?: "file service album upload failed", cause = e)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /**
+     * Fetches and decrypts the manifest of an album link; null when the id is
+     * a single file (or gone), so the caller can fall back to `/raw`. The
+     * manifest is small and capped; its names and types are display text only.
+     */
+    @Suppress("TooGenericExceptionCaught", "ThrowsCount")
+    fun downloadAlbumManifest(baseUrl: String, id: String, keyFragment: String): List<CdnAlbumItem>? {
+        val key = CdnCrypto.fragmentToKey(keyFragment)
+            ?: throw CdnException(CODE_INVALID_RESPONSE, message = "the link carries no valid file key")
+        val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}/$id/manifest"
+        val connection = openDownloadConnection(url)
+        try {
+            val status = connection.responseCode
+            if (status == HTTP_NOT_FOUND) {
+                return null
+            }
+            requireDownloadable(status)
+            val body = readBounded(connection, CdnAlbum.MAX_MANIFEST_BYTES.toLong())
+            val plaintext = CdnCrypto.decrypt(CdnCrypto.albumManifestKey(key), body)
+                ?: throw CdnException(CODE_DECRYPT, status, "the album manifest failed authentication")
+            return CdnAlbum.parseManifest(plaintext)
+                ?: throw CdnException(CODE_INVALID_RESPONSE, status, "the album manifest is not readable")
+        } catch (e: Exception) {
+            throw asDownloadFailure(e)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /**
+     * Downloads and decrypts one album item by its 0-based [index], under the
+     * HKDF subkey of that position; blocking and bounded by [maxBytes], like
+     * [download]. The key never reaches the URL or a log line.
+     */
+    @Suppress("TooGenericExceptionCaught", "ThrowsCount")
+    fun downloadAlbumItem(baseUrl: String, id: String, index: Int, keyFragment: String, maxBytes: Long): ByteArray {
+        val key = CdnCrypto.fragmentToKey(keyFragment)
+            ?: throw CdnException(CODE_INVALID_RESPONSE, message = "the link carries no valid file key")
+        if (index < 0 || index >= CdnAlbum.HARD_MAX_ITEMS) {
+            throw CdnException(CODE_INVALID_RESPONSE, message = "the album item index is out of range")
+        }
+        val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}/$id/items/$index"
+        val connection = openDownloadConnection(url)
+        try {
+            val status = connection.responseCode
+            requireDownloadable(status)
+            val body = readBounded(connection, maxBytes)
+            return CdnCrypto.decrypt(CdnCrypto.albumItemKey(key, index), body)
+                ?: throw CdnException(CODE_DECRYPT, status, "the downloaded album item failed authentication")
+        } catch (e: Exception) {
+            throw asDownloadFailure(e)
         } finally {
             connection.disconnect()
         }
@@ -289,6 +443,102 @@ internal object CdnClient {
         }
         sealed.close()
         return written
+    }
+
+    /** Validates the album caps the app can know; returns each item's ciphertext length. */
+    @Suppress("ThrowsCount")
+    private fun requireAlbumItemsFit(sizes: List<Long>, maxPlaintextBytes: Long): List<Long> {
+        if (sizes.isEmpty()) {
+            throw CdnException(CODE_INVALID_RESPONSE, message = "an album needs at least one item")
+        }
+        if (sizes.size > CdnAlbum.MAX_ITEMS) {
+            throw CdnException(ERROR_ALBUM_TOO_MANY_ITEMS, message = "the album has more items than the bridge accepts")
+        }
+        return sizes.map { size ->
+            if (size <= 0) {
+                throw CdnException(CODE_TOO_LARGE, message = "cannot size an album attachment")
+            }
+            requireFitsUploadLimit(size, maxPlaintextBytes)
+            size + CdnCrypto.OVERHEAD_BYTES
+        }
+    }
+
+    /** Pre-checks the album size caps the bridge defaults document. */
+    private fun requireAlbumFits(ciphertextLengths: List<Long>, manifestCiphertextBytes: Int) {
+        if (manifestCiphertextBytes > CdnAlbum.MAX_MANIFEST_BYTES) {
+            throw CdnException(ERROR_ALBUM_MANIFEST_TOO_LARGE, message = "the album manifest is too large")
+        }
+        if (ciphertextLengths.sum() + manifestCiphertextBytes > CdnAlbum.MAX_ALBUM_BYTES) {
+            throw CdnException(ERROR_ALBUM_TOO_LARGE, message = "the album exceeds the bridge's album size limit")
+        }
+    }
+
+    /** Streams one plaintext into [output] as `nonce || ciphertext || tag`, without closing it. */
+    private fun encryptInto(
+        output: OutputStream,
+        source: InputStream,
+        key: ByteArray,
+        maxPlaintextBytes: Long,
+        onProgress: ((written: Long) -> Unit)?,
+    ): Long {
+        val nonce = ByteArray(CdnCrypto.NONCE_BYTES)
+        secureRandom.nextBytes(nonce)
+        output.write(nonce)
+        val cipher = CdnCrypto.encryptCipher(key, nonce)
+
+        val buffer = ByteArray(COPY_BUFFER_BYTES)
+        var written = 0L
+        while (true) {
+            val read = source.read(buffer)
+            if (read == -1) {
+                break
+            }
+            written += read
+            if (written > maxPlaintextBytes) {
+                throw CdnException(CODE_TOO_LARGE, message = "the attachment exceeds the configured upload limit")
+            }
+            val sealed = cipher.update(buffer, 0, read)
+            if (sealed != null && sealed.isNotEmpty()) {
+                output.write(sealed)
+            }
+            onProgress?.invoke(written)
+        }
+        val tail = cipher.doFinal()
+        if (tail.isNotEmpty()) {
+            output.write(tail)
+        }
+        return written
+    }
+
+    private fun completeAlbumUpload(connection: HttpURLConnection, key: ByteArray, written: Long): CdnAlbumUpload {
+        val status = connection.responseCode
+        val stream = if (status in HTTP_OK_MIN..HTTP_OK_MAX) connection.inputStream else connection.errorStream
+        val body = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
+        if (status != HTTP_CREATED) {
+            failUpload(status, body)
+        }
+
+        val parsed = decodeAlbumUpload(body, status)
+        if (parsed.id.isEmpty() || parsed.items <= 0) {
+            throw CdnException(CODE_INVALID_RESPONSE, status, "the bridge returned no album id")
+        }
+        return CdnAlbumUpload(
+            id = parsed.id,
+            size = if (parsed.size > 0) parsed.size else written,
+            itemCount = parsed.items,
+            expiresAtMs = parsed.expiresAtMs,
+            keyFragment = CdnCrypto.keyToFragment(key),
+        )
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun decodeAlbumUpload(body: String, status: Int): AlbumUploadResponse {
+        return try {
+            json.decodeFromString(serializer<AlbumUploadResponse>(), body)
+        } catch (e: Exception) {
+            Log.e(TAG, "unexpected file service album response", e)
+            throw CdnException(CODE_INVALID_RESPONSE, status, "the bridge returned an unexpected album response", e)
+        }
     }
 
     private fun completeUpload(connection: HttpURLConnection, key: ByteArray, written: Long): CdnUpload {

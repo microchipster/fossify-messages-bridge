@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/cdn_album_cell_holder"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content">
+
+    <com.google.android.material.imageview.ShapeableImageView
+        android:id="@+id/cdn_album_cell_image"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="centerCrop"
+        android:visibility="gone"
+        app:shapeAppearanceOverlay="@style/roundedImageView"
+        tools:ignore="ContentDescription" />
+
+    <ProgressBar
+        android:id="@+id/cdn_album_cell_progress"
+        style="?android:attr/progressBarStyleSmall"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center" />
+
+    <ImageView
+        android:id="@+id/cdn_album_cell_play"
+        android:layout_width="@dimen/play_outline_size"
+        android:layout_height="@dimen/play_outline_size"
+        android:layout_gravity="center"
+        android:src="@drawable/ic_play_outline_vector"
+        android:visibility="gone"
+        tools:ignore="ContentDescription" />
+
+    <LinearLayout
+        android:id="@+id/cdn_album_cell_content"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:visibility="gone" />
+
+    <org.fossify.commons.views.MyTextView
+        android:id="@+id/cdn_album_cell_error"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:padding="@dimen/normal_margin"
+        android:text="@string/cdn_render_failed"
+        android:visibility="gone" />
+</FrameLayout>
