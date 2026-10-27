@@ -69,7 +69,9 @@ data class BridgeEventsPage(
  * window).
  */
 // Event emission is best-effort: receivers must keep working even if a bridge event cannot be built.
-@Suppress("TooGenericExceptionCaught")
+// One builder per wire event type keeps the payload shapes testable; splitting
+// the factory would obscure the feed contract.
+@Suppress("TooGenericExceptionCaught", "TooManyFunctions")
 object BridgeEvents {
     const val TYPE_MESSAGE_NEW = "message.new"
     const val TYPE_MESSAGE_UPDATED = "message.updated"
@@ -279,6 +281,58 @@ object BridgeEvents {
             preview = preview(body),
             sendId = sendId,
             recipients = emptyList(),
+        )
+    }
+
+    /**
+     * Emits a `thread.updated` event carrying the thread's current participants.
+     *
+     * A send can create a thread the bridge has never seen (a new group MMS to
+     * several recipients). The `message.new` echo deliberately carries no
+     * recipients, so without this update the bridge would create the portal
+     * without members, name it "Unknown conversation" and have no recipients
+     * to send with. Best effort: a thread whose participants cannot be read
+     * emits nothing, so an empty list can never clear known room members.
+     */
+    fun onThreadUpdated(
+        context: Context,
+        threadId: Long,
+        subId: Int,
+        timestampMs: Long = System.currentTimeMillis(),
+    ) {
+        try {
+            if (threadId <= 0 || !BridgeConfig.newInstance(context).isActive()) {
+                return
+            }
+            val recipients = BridgeQueries.threadRecipients(context, threadId) ?: emptyList()
+            if (recipients.isEmpty()) {
+                return
+            }
+            append(threadUpdatedEvent(threadId, subId, recipients, timestampMs))
+        } catch (e: Exception) {
+            Log.e(TAG, "failed to emit thread update event", e)
+        }
+    }
+
+    /**
+     * Builds the `thread.updated` payload without touching Android state, so
+     * the wire shape (participants present, no send correlation) is unit
+     * testable.
+     */
+    internal fun threadUpdatedEvent(
+        threadId: Long,
+        subId: Int,
+        recipients: List<String>,
+        timestampMs: Long = System.currentTimeMillis(),
+    ): BridgeEvent {
+        return BridgeEvent(
+            type = TYPE_THREAD_UPDATED,
+            threadId = threadId,
+            subId = normalizeSubId(subId),
+            timestampMs = timestampMs,
+            isMms = false,
+            hasAttachment = false,
+            recipients = recipients,
         )
     }
 
