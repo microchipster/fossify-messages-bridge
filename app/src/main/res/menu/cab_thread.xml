@@ -33,6 +33,11 @@
         android:title="@string/forward_message"
         app:showAsAction="never" />
     <item
+        android:id="@+id/cab_react"
+        android:showAsAction="never"
+        android:title="@string/react"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/cab_select_text"
         android:showAsAction="never"
         android:title="@string/select_text"
