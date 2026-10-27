@@ -13,6 +13,10 @@ import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.views.MyRecyclerView
 import org.fossify.messages.R
 import org.fossify.messages.activities.SimpleActivity
+import org.fossify.messages.bridge.BridgeQueries
+import org.fossify.messages.bridge.MergeCandidate
+import org.fossify.messages.bridge.MergeSelection
+import org.fossify.messages.bridge.MergeThreads
 import org.fossify.messages.dialogs.RenameConversationDialog
 import org.fossify.messages.extensions.config
 import org.fossify.messages.extensions.deleteConversation
@@ -56,6 +60,8 @@ class ConversationsAdapter(
             findItem(R.id.cab_mark_as_read).isVisible = selectedItems.any { !it.read }
             findItem(R.id.cab_mark_as_unread).isVisible = selectedItems.any { it.read }
             findItem(R.id.cab_archive).isVisible = archiveAvailable
+            findItem(R.id.cab_merge_threads).isVisible =
+                selectedItems.size >= 2 && MergeThreads.isAvailable(activity)
             checkPinBtnVisibility(this)
         }
     }
@@ -73,6 +79,7 @@ class ConversationsAdapter(
             R.id.cab_copy_number -> copyNumberToClipboard()
             R.id.cab_delete -> askConfirmDelete()
             R.id.cab_archive -> askConfirmArchive()
+            R.id.cab_merge_threads -> askConfirmMerge(selectedItems)
             R.id.cab_rename_conversation -> renameConversation(selectedItems.first())
             R.id.cab_conversation_details ->
                 activity.launchConversationDetails(selectedItems.first().threadId)
@@ -219,6 +226,48 @@ class ConversationsAdapter(
                 }
             }
         }
+    }
+
+    /**
+     * Confirms merging the selected conversations into one group chat.
+     *
+     * The dialog lists the participants (addresses) and warns that merged-away
+     * chats are tombstoned and can only be restored from the bridge with
+     * `!sms unmerge`. Confirming pushes a `merge_threads` request through the
+     * pairing outbox; the bridge's `merge_threads.result` is shown as a toast
+     * once it arrives.
+     */
+    private fun askConfirmMerge(conversations: List<Conversation>) {
+        ensureBackgroundThread {
+            val selection = mergeSelectionOf(conversations)
+            activity.runOnUiThread {
+                if (!selection.canMerge) {
+                    return@runOnUiThread
+                }
+                val question = MergeThreads.confirmationMessage(activity, selection)
+                ConfirmationDialog(activity, question) {
+                    MergeThreads.request(activity, selection)
+                    finishActMode()
+                }
+            }
+        }
+    }
+
+    /**
+     * Reduces the selected rows to the merge request's candidates. The
+     * participants are resolved per thread, so the dialog shows every address
+     * of a group thread instead of just the first one.
+     */
+    private fun mergeSelectionOf(conversations: List<Conversation>): MergeSelection {
+        val candidates = conversations.map { conversation ->
+            val addresses = BridgeQueries.threadRecipients(activity, conversation.threadId)
+            MergeCandidate(
+                threadId = conversation.threadId,
+                title = conversation.title,
+                address = addresses?.joinToString(", ").orEmpty().ifEmpty { conversation.phoneNumber },
+            )
+        }
+        return MergeSelection(candidates)
     }
 
     private fun renameConversation(conversation: Conversation) {

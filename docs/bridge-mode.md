@@ -136,9 +136,10 @@ No extras. Triggers one heartbeat + queue poll immediately. Returns the cursor s
 ### `control.PROVISION`
 
 Extra *json* `config` with any of `bridge_enabled`, `bridge_port`, `bridge_device_id`,
-`bridge_hs_url`, `bridge_base_url`, `control_enabled`, `control_token`. Applies the
-preferences, starts the bridge service when its settings changed, and marks the device
-provisioned (the timestamp is kept in the `provisioned_at` preference). Result:
+`bridge_hs_url`, `bridge_base_url`, `control_enabled`, `control_token`,
+`send_long_message_mms`, `send_group_message_mms`. Applies the preferences, starts the
+bridge service when its settings changed, and marks the device provisioned (the
+timestamp is kept in the `provisioned_at` preference). Result:
 
 ```json
 {"provisioned": true, "provisioned_at_ms": 1761600000000, "applied": ["bridge_enabled", "control_token"]}
@@ -152,6 +153,14 @@ The static bridge token (`bridge_token`) is deliberately **not** part of this co
 it afterwards with `control.CONFIG` if the deployment needs the static-token agent mode.
 Unknown keys and wrong types are rejected with `invalid_request`, so a typo never silently
 half-applies a config.
+
+`send_long_message_mms` and `send_group_message_mms` set the **Settings → Outgoing
+messages** message-format preferences (booleans, both default **off**): long texts go out
+as one MMS instead of a concatenated multipart SMS, and threads with more than one
+recipient go out as one group MMS. Unlike `control.CONFIG`, they are part of the bootstrap
+command, so a scripted install can pick the send format without touching the phone; setting
+`send_group_message_mms` also answers the first-group-send dialog the app would otherwise
+show. The trade-offs are in [`mms-interop.md`](mms-interop.md).
 
 ## Zero-touch install and provisioning
 
@@ -185,13 +194,16 @@ rejected by the app.
   "bridge_hs_url": "https://matrix.example.com",
   "bridge_base_url": "https://bridge.example.com",
   "control_enabled": true,
-  "control_token": "a-long-random-token"
+  "control_token": "a-long-random-token",
+  "send_group_message_mms": true
 }
 ```
 
 `bridge_device_id` is optional and, as in `control.CONFIG`, is stored exactly as given;
-leave it out and the app keeps its random `android-<uuid>` id. Provisioning only prepares
-the app — pairing still happens with the normal flows (`control.PAIR` or the QR screen).
+leave it out and the app keeps its random `android-<uuid>` id. `send_long_message_mms` and
+`send_group_message_mms` are optional too and only applied when present. Provisioning only
+prepares the app — pairing still happens with the normal flows (`control.PAIR` or the QR
+screen).
 
 ## Errors
 
@@ -225,8 +237,9 @@ the app — pairing still happens with the normal flows (`control.PAIR` or the Q
 - Status/config come from existing preference and `BridgeService` state; `PAIR`/`UNPAIR`
   reuse `PairingClient`/`PairingStore`; `SEND` reuses `BridgeSender` (including the
   one-MMS group rule and the own-number filter); `SYNC` reuses the heartbeat/queue poller;
-  `PROVISION` applies the same preference shape as `CONFIG` (minus the static bridge token),
-  stores `provisioned_at` and skips the `control_enabled` gate.
+  `PROVISION` applies the same preference shape as `CONFIG` (minus the static bridge token)
+  plus the two message-format preferences of `Config`, stores `provisioned_at` and skips
+  the `control_enabled` gate.
 - `tools/install-app.sh` and `tools/provision-app.sh` are the scripted install/provisioning
   path over adb; the JSON config file format is documented above.
 - Unit tests cover the JSON contracts and authorization matrix for every command.

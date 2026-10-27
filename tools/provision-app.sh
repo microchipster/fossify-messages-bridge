@@ -30,7 +30,8 @@ Usage: tools/provision-app.sh <adb-serial> <config-file>
 
 The config file holds one JSON object with any of:
   bridge_enabled, bridge_port, bridge_device_id, bridge_hs_url,
-  bridge_base_url, control_enabled, control_token
+  bridge_base_url, control_enabled, control_token,
+  send_long_message_mms, send_group_message_mms
 
 Example config file:
   {
@@ -39,7 +40,8 @@ Example config file:
     "bridge_hs_url": "https://matrix.example.com",
     "bridge_base_url": "https://bridge.example.com",
     "control_enabled": true,
-    "control_token": "a-long-random-token"
+    "control_token": "a-long-random-token",
+    "send_group_message_mms": true
   }
 EOF
 }

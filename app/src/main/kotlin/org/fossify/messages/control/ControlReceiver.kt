@@ -31,6 +31,7 @@ import org.fossify.messages.bridge.PairingException
 import org.fossify.messages.bridge.PairingOutbox
 import org.fossify.messages.bridge.PairingPoller
 import org.fossify.messages.bridge.PairingStore
+import org.fossify.messages.helpers.Config
 import org.fossify.messages.messaging.isLongMmsMessage
 import java.io.File
 
@@ -212,6 +213,7 @@ class ControlReceiver : BroadcastReceiver() {
 
         val config = BridgeConfig.newInstance(context)
         val store = PairingStore.newInstance(context)
+        val messageConfig = Config.newInstance(context)
         applyBoolean(payload, ControlContract.FIELD_BRIDGE_ENABLED) { config.bridgeEnabled = it }
         applyInt(payload, ControlContract.FIELD_BRIDGE_PORT) { config.bridgePort = it }
         applyString(payload, ControlContract.FIELD_BRIDGE_DEVICE_ID) { config.bridgeDeviceId = it }
@@ -219,6 +221,14 @@ class ControlReceiver : BroadcastReceiver() {
         applyString(payload, ControlContract.FIELD_BRIDGE_BASE_URL) { store.bridgeBaseUrl = it }
         applyBoolean(payload, ControlContract.FIELD_CONTROL_ENABLED) { config.controlEnabled = it }
         applyString(payload, ControlContract.FIELD_CONTROL_TOKEN) { config.controlToken = it }
+        // Message-format preferences of Settings -> Outgoing messages; setting
+        // the group preference also answers the first-group-send dialog.
+        applyBoolean(payload, ControlContract.FIELD_SEND_LONG_MESSAGE_MMS) {
+            messageConfig.sendLongMessageMMS = it
+        }
+        applyBoolean(payload, ControlContract.FIELD_SEND_GROUP_MESSAGE_MMS) {
+            messageConfig.sendGroupMessageMMS = it
+        }
         config.provisionedAt = System.currentTimeMillis()
 
         BridgeService.maybeStart(context)

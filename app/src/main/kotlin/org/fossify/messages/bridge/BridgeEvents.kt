@@ -47,6 +47,10 @@ data class BridgeEvent(
     val recipients: List<String> = emptyList(),
     // Command sequence this event acknowledges (acks only).
     @SerialName("command_seq") val commandSeq: Long = 0,
+    // Selected phone threads of a `merge_threads` request and the thread whose
+    // room becomes the merged target (0 = first thread).
+    @SerialName("thread_ids") val threadIds: List<Long> = emptyList(),
+    @SerialName("target_thread") val targetThread: Long = 0,
 )
 
 /** GET /v1/events response envelope. */
@@ -70,6 +74,9 @@ object BridgeEvents {
     const val TYPE_MESSAGE_NEW = "message.new"
     const val TYPE_MESSAGE_UPDATED = "message.updated"
     const val TYPE_THREAD_UPDATED = "thread.updated"
+    // App -> bridge request that asks the bridge to merge the rooms of several
+    // phone threads (see MergeThreads).
+    const val TYPE_MERGE_THREADS = "merge_threads"
 
     private const val TAG = "BridgeEvents"
     private const val MAX_EVENTS = 10000

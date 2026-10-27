@@ -23,6 +23,18 @@
         app:layout_constraintTop_toTopOf="@id/conversation_address"
         tools:src="@mipmap/ic_launcher" />
 
+    <ImageView
+        android:id="@+id/selection_check"
+        android:layout_width="@dimen/small_icon_size"
+        android:layout_height="@dimen/small_icon_size"
+        android:background="@drawable/circle_background"
+        android:padding="@dimen/tiny_margin"
+        android:src="@drawable/ic_check_vector"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/conversation_image"
+        app:layout_constraintEnd_toEndOf="@id/conversation_image"
+        tools:visibility="visible" />
+
     <org.fossify.commons.views.MyTextView
         android:id="@+id/conversation_address"
         android:layout_width="0dp"

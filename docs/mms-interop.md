@@ -60,7 +60,7 @@ Caveats seen in the field:
   if group chats matter, since separate 1:1 replies are worse than one MMS charge.
 - Carrier that caps or drops MMS: keep `send_long_message_mms` off. Multipart SMS is the
   fallback and most clients reassemble it fine.
-- Headless/bridge deployments: `control.PROVISION` covers the bridge/control preferences
-  only, so the two message-format preferences still have to be set once in
-  **Settings → Outgoing messages**. Adding them (or a general message-format block) to the
-  provisioning config is the obvious follow-up if automation should own the send format too.
+- Headless/bridge deployments: `control.PROVISION` accepts both
+  `send_long_message_mms` and `send_group_message_mms` (see
+  [`bridge-mode.md`](bridge-mode.md#controlprovision)), so a scripted install can own the
+  send format too; they can also be changed later in **Settings → Outgoing messages**.
