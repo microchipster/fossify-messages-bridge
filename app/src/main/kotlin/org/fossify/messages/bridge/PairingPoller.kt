@@ -268,6 +268,7 @@ internal data class QueueCommand(
     val seq: Long = 0,
     val type: String = "",
     @SerialName("send_id") val sendId: String = "",
+    @SerialName("message_id") val messageId: String = "",
     @SerialName("sub_id") val subId: Int = 0,
     val recipients: List<String> = emptyList(),
     val text: String = "",
@@ -280,6 +281,7 @@ internal data class QueueCommand(
         const val TYPE_SEND_MMS = "send_mms"
         const val TYPE_MARK_READ = "mark_read"
         const val TYPE_PING = "ping"
+        const val TYPE_FETCH_MESSAGE = "fetch_message"
     }
 }
 
