@@ -3,6 +3,7 @@ package org.fossify.messages.activities
 import android.annotation.SuppressLint
 import android.app.Activity
 import android.app.AlarmManager
+import android.app.ProgressDialog
 import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
@@ -107,6 +108,14 @@ import org.fossify.messages.R
 import org.fossify.messages.adapters.AttachmentsAdapter
 import org.fossify.messages.adapters.AutoCompleteTextViewAdapter
 import org.fossify.messages.adapters.ThreadAdapter
+import org.fossify.messages.bridge.BridgeConfig
+import org.fossify.messages.bridge.CdnClient
+import org.fossify.messages.bridge.CdnException
+import org.fossify.messages.bridge.CdnExpiry
+import org.fossify.messages.bridge.CdnSendInput
+import org.fossify.messages.bridge.CdnSendOption
+import org.fossify.messages.bridge.CdnSendPath
+import org.fossify.messages.bridge.PairingStore
 import org.fossify.messages.databinding.ActivityThreadBinding
 import org.fossify.messages.databinding.ItemSelectedContactBinding
 import org.fossify.messages.dialogs.GroupMessageSendDialog
@@ -205,6 +214,9 @@ import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
 import org.joda.time.DateTime
 import java.io.File
+
+/** 100% span of the CDN upload progress bar. */
+private const val CDN_UPLOAD_PROGRESS_MAX = 100
 
 class ThreadActivity : SimpleActivity() {
     private var threadId = 0L
@@ -1552,7 +1564,7 @@ class ThreadActivity : SimpleActivity() {
 
     private fun getAttachmentSelections() = getAttachmentsAdapter()?.attachments ?: emptyList()
 
-    private fun addAttachment(uri: Uri) {
+    private fun addAttachment(uri: Uri, ignoreCdnChoice: Boolean = false) {
         val id = uri.toString()
         if (getAttachmentSelections().any { it.id == id }) {
             toast(R.string.duplicate_item_warning)
@@ -1566,14 +1578,15 @@ class ThreadActivity : SimpleActivity() {
         }
         val isImage = mimeType.isImageMimeType()
         val isGif = mimeType.isGifMimeType()
-        if (isGif || !isImage) {
+        val cdnInput = if (ignoreCdnChoice) null else buildCdnSendInput(uri, mimeType)
+        if (cdnInput != null && CdnSendPath.needsChoice(cdnInput)) {
+            showCdnSendChoice(cdnInput, uri)
+            return
+        }
+        if ((isGif || !isImage) && cdnInput != null) {
             // is it assumed that images will always be compressed below the max MMS size limit
-            val fileSize = getFileSizeFromUri(uri)
-            val mmsFileSizeLimit = config.mmsFileSizeLimit
-            if (mmsFileSizeLimit != FILE_SIZE_NONE && fileSize > mmsFileSizeLimit) {
-                toast(R.string.attachment_sized_exceeds_max_limit, length = Toast.LENGTH_LONG)
-                return
-            }
+            toast(R.string.attachment_sized_exceeds_max_limit, length = Toast.LENGTH_LONG)
+            return
         }
 
         var adapter = getAttachmentsAdapter()
@@ -1600,6 +1613,146 @@ class ThreadActivity : SimpleActivity() {
         )
         adapter.addAttachment(attachment)
         checkSendMessageAvailability()
+    }
+
+    /**
+     * Builds the decision input for attachments above the MMS limit; null for
+     * anything that keeps the normal small-send path.
+     */
+    private fun buildCdnSendInput(uri: Uri, mimeType: String): CdnSendInput? {
+        val mmsFileSizeLimit = config.mmsFileSizeLimit
+        if (mmsFileSizeLimit == FILE_SIZE_NONE) {
+            return null
+        }
+        val fileSize = getFileSizeFromUri(uri)
+        if (fileSize <= mmsFileSizeLimit) {
+            return null
+        }
+        val settings = BridgeConfig.newInstance(this).cdnSettings()
+        return CdnSendInput(
+            fileSizeBytes = fileSize,
+            mmsLimitBytes = mmsFileSizeLimit,
+            uploadLimitBytes = settings.uploadLimitBytes,
+            mimeType = mimeType,
+            cdnAdvertised = isCdnAdvertised(),
+            settings = settings,
+        )
+    }
+
+    /** True when the bridge advertised its file service and this phone is paired with it. */
+    private fun isCdnAdvertised(): Boolean {
+        val store = PairingStore.newInstance(this)
+        return store.isPaired && store.cdnBaseUrl.isNotEmpty()
+    }
+
+    private fun showCdnSendChoice(input: CdnSendInput, uri: Uri) {
+        val options = CdnSendPath.options(input)
+        val labels = options.map { getString(cdnOptionLabel(it)) }.toTypedArray()
+        val builder = getAlertDialogBuilder()
+            .setTitle(R.string.cdn_send_options)
+            .setItems(labels) { _, index -> cdnOptionChosen(options[index], uri) }
+            .setNegativeButton(android.R.string.cancel, null)
+        if (CdnSendOption.COMPRESS !in options) {
+            builder.setMessage(R.string.cdn_compress_unavailable)
+        }
+        builder.show()
+    }
+
+    private fun cdnOptionLabel(option: CdnSendOption) = when (option) {
+        CdnSendOption.ENCRYPTED_LINK -> R.string.cdn_send_link
+        CdnSendOption.COMPRESS -> R.string.cdn_send_compress
+        CdnSendOption.MMS -> R.string.cdn_send_mms
+    }
+
+    private fun cdnOptionChosen(option: CdnSendOption, uri: Uri) {
+        when (option) {
+            CdnSendOption.ENCRYPTED_LINK -> askCdnExpiryAndUpload(uri)
+            CdnSendOption.COMPRESS, CdnSendOption.MMS -> addAttachment(uri, ignoreCdnChoice = true)
+        }
+    }
+
+    private fun askCdnExpiryAndUpload(uri: Uri) {
+        val bridge = BridgeConfig.newInstance(this)
+        if (!bridge.cdnAskExpiry) {
+            uploadCdnFile(uri, bridge.cdnExpiryDays)
+            return
+        }
+        val items = arrayListOf<RadioItem>().apply {
+            CdnExpiry.DAY_CHOICES.forEach { days ->
+                add(RadioItem(days, getString(R.string.cdn_expiry_days, days)))
+            }
+        }
+        RadioGroupDialog(activity = this, items = items, checkedItemId = bridge.cdnExpiryDays) { chosen ->
+            uploadCdnFile(uri, chosen as Int)
+        }
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun uploadCdnFile(uri: Uri, expiryDays: Int) {
+        val bridge = BridgeConfig.newInstance(this)
+        val fileName = getFilenameFromUri(uri).ifBlank { "attachment" }
+        val progress = ProgressDialog(this).apply {
+            setTitle(R.string.cdn_uploading)
+            setProgressStyle(ProgressDialog.STYLE_HORIZONTAL)
+            max = CDN_UPLOAD_PROGRESS_MAX
+            setProgress(0)
+            setCancelable(false)
+            show()
+        }
+        ensureBackgroundThread {
+            try {
+                val upload = CdnClient.upload(
+                    context = this,
+                    uri = uri,
+                    expiryDays = expiryDays,
+                    maxPlaintextBytes = bridge.cdnSettings().uploadLimitBytes,
+                ) { written, knownTotal ->
+                    updateCdnUploadProgress(progress, written, knownTotal)
+                }
+                val link = upload.link(PairingStore.newInstance(this).cdnBaseUrl)
+                runOnUiThread {
+                    progress.dismiss()
+                    appendCdnLink(fileName, link)
+                }
+            } catch (e: CdnException) {
+                runOnUiThread {
+                    progress.dismiss()
+                    toast(cdnErrorMessage(e), Toast.LENGTH_LONG)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    progress.dismiss()
+                    showErrorToast(e)
+                }
+            }
+        }
+    }
+
+    private fun updateCdnUploadProgress(progress: ProgressDialog, written: Long, knownTotal: Long) {
+        if (knownTotal > 0) {
+            val percent = (written * CDN_UPLOAD_PROGRESS_MAX / knownTotal).toInt()
+            runOnUiThread { progress.progress = percent.coerceIn(0, CDN_UPLOAD_PROGRESS_MAX) }
+        }
+    }
+
+    /** Puts the link and a short file label into the message text. */
+    private fun appendCdnLink(fileName: String, link: String) {
+        val label = getString(R.string.cdn_link_message, fileName, link)
+        val existing = binding.messageHolder.threadTypeMessage.value.trim()
+        val text = if (existing.isEmpty()) label else "$existing $label"
+        binding.messageHolder.threadTypeMessage.setText(text)
+        binding.messageHolder.threadTypeMessage.setSelection(text.length)
+        checkSendMessageAvailability()
+        toast(R.string.cdn_upload_done)
+    }
+
+    private fun cdnErrorMessage(error: CdnException): String = when (error.code) {
+        CdnClient.CODE_TOO_LARGE, CdnClient.ERROR_FILE_TOO_LARGE -> getString(R.string.cdn_error_too_large)
+        CdnClient.ERROR_QUOTA_EXCEEDED -> getString(R.string.cdn_error_quota)
+        CdnClient.ERROR_UNAUTHORIZED -> getString(R.string.cdn_error_unauthorized)
+        CdnClient.CODE_NOT_CONFIGURED -> getString(R.string.cdn_error_not_configured)
+        CdnClient.CODE_NETWORK -> getString(R.string.cdn_error_network)
+        else -> error.message ?: getString(org.fossify.commons.R.string.unknown_error_occurred)
     }
 
     private fun saveAttachments(resultData: Intent) {

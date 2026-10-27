@@ -45,6 +45,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
 
         const val BRIDGE_HS_URL = "bridge_hs_url"
         const val BRIDGE_BASE_URL = "bridge_base_url"
+        const val BRIDGE_CDN_BASE_URL = "bridge_cdn_base_url"
         const val BRIDGE_PAIRED_DEVICE_ID = "bridge_paired_device_id"
         const val BRIDGE_PAIRED_USER = "bridge_paired_user"
         const val BRIDGE_TOKEN_WRAPPED = "bridge_token_wrapped"
@@ -70,6 +71,15 @@ class PairingStore(context: Context) : BaseConfig(context) {
     var bridgeBaseUrl: String
         get() = prefs.getString(BRIDGE_BASE_URL, "").orEmpty()
         set(value) = prefs.edit().putString(BRIDGE_BASE_URL, value).apply()
+
+    /**
+     * Public base URL of the bridge-hosted encrypted file service, as
+     * advertised by the bridge (`cdn_base_url`). Empty means the bridge does
+     * not offer the service; the app never guesses a hostname of its own.
+     */
+    var cdnBaseUrl: String
+        get() = prefs.getString(BRIDGE_CDN_BASE_URL, "").orEmpty()
+        set(value) = prefs.edit().putString(BRIDGE_CDN_BASE_URL, value.trim()).apply()
 
     /**
      * Device id the bridge knows this phone by, as acknowledged during pairing.
@@ -149,7 +159,14 @@ class PairingStore(context: Context) : BaseConfig(context) {
         }
 
     /** Persists a completed pairing in one transaction. */
-    fun savePairing(homeserverUrl: String, bridgeBaseUrl: String, deviceId: String, user: String, token: String) {
+    fun savePairing(
+        homeserverUrl: String,
+        bridgeBaseUrl: String,
+        deviceId: String,
+        user: String,
+        token: String,
+        cdnBaseUrl: String = "",
+    ) {
         val wrapped = wrapToken(token)
         if (wrapped.isEmpty()) {
             error("failed to wrap the device token")
@@ -164,6 +181,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
         prefs.edit()
             .putString(BRIDGE_HS_URL, homeserverUrl)
             .putString(BRIDGE_BASE_URL, bridgeBaseUrl)
+            .putString(BRIDGE_CDN_BASE_URL, cdnBaseUrl.trim())
             .putString(BRIDGE_PAIRED_DEVICE_ID, deviceId)
             .putString(BRIDGE_PAIRED_USER, user)
             .putString(BRIDGE_TOKEN_WRAPPED, wrapped)
@@ -187,6 +205,7 @@ class PairingStore(context: Context) : BaseConfig(context) {
         prefs.edit()
             .remove(BRIDGE_HS_URL)
             .remove(BRIDGE_BASE_URL)
+            .remove(BRIDGE_CDN_BASE_URL)
             .remove(BRIDGE_PAIRED_USER)
             .remove(BRIDGE_TOKEN_WRAPPED)
             .remove(BRIDGE_QUEUE_CURSOR)

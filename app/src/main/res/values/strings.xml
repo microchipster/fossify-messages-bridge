@@ -32,6 +32,28 @@
     <string name="bridge_pairing_invalid_payload">This is not a valid pairing payload</string>
     <string name="bridge_pairing_camera_denied">Camera permission is needed to scan the QR code</string>
     <string name="bridge_pairing_scan_failed">Cannot open the QR scanner</string>
+    <!-- Bridge file service -->
+    <string name="bridge_settings">Bridge</string>
+    <string name="cdn_allow_links">Send large files as encrypted CDN links</string>
+    <string name="cdn_ask_compress">Ask before compressing large attachments</string>
+    <string name="cdn_upload_limit">Maximum upload size</string>
+    <string name="cdn_upload_limit_mb">%1$d MB</string>
+    <string name="cdn_expiry">Link expiry</string>
+    <string name="cdn_expiry_days">%1$d days</string>
+    <string name="cdn_ask_expiry">Ask for the link expiry on every upload</string>
+    <string name="cdn_send_options">How should this attachment be sent?</string>
+    <string name="cdn_send_link">Send as encrypted link</string>
+    <string name="cdn_send_compress">Compress first</string>
+    <string name="cdn_send_mms">Send as MMS</string>
+    <string name="cdn_compress_unavailable">No compressor is available for this file type; the encrypted link avoids the size limit.</string>
+    <string name="cdn_uploading">Uploading encrypted file…</string>
+    <string name="cdn_upload_done">Uploaded, the link was added to the message</string>
+    <string name="cdn_link_message">%1$s (encrypted link): %2$s</string>
+    <string name="cdn_error_too_large">The file is too large for the configured upload limit</string>
+    <string name="cdn_error_not_configured">The bridge does not advertise a file service</string>
+    <string name="cdn_error_unauthorized">The bridge rejected the device token, pair this phone again</string>
+    <string name="cdn_error_quota">The bridge storage quota is full</string>
+    <string name="cdn_error_network">Could not reach the bridge file service</string>
     <!-- Bridge merging -->
     <string name="merge_as_group_chat">Merge as group chat</string>
     <string name="merge_threads_confirmation">Merge %1$d conversations into one group chat?\n\n%2$s\n\nMerged-away chats are tombstoned and stop receiving new messages there. The merge can only be undone from the bridge with !sms unmerge.</string>

@@ -27,6 +27,11 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
         private const val BRIDGE_TOKEN = "bridge_token"
         private const val BRIDGE_PORT = "bridge_port"
         private const val BRIDGE_DEVICE_ID = "bridge_device_id"
+        private const val CDN_ALLOW_LINKS = "cdn_allow_links"
+        private const val CDN_ASK_COMPRESS = "cdn_ask_compress"
+        private const val CDN_UPLOAD_LIMIT_MB = "cdn_upload_limit_mb"
+        private const val CDN_EXPIRY_DAYS = "cdn_expiry_days"
+        private const val CDN_ASK_EXPIRY = "cdn_ask_expiry"
         private const val CONTROL_ENABLED = "control_enabled"
         private const val CONTROL_TOKEN = "control_token"
         private const val PROVISIONED_AT = "provisioned_at"
@@ -102,6 +107,46 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
     fun isActive(): Boolean {
         return bridgeEnabled || PairingStore.newInstance(context).isPaired
     }
+
+    /**
+     * Allows uploading oversized attachments to the bridge's encrypted file
+     * service and putting the link into the message instead. Inert until the
+     * bridge advertises a `cdn_base_url` over a paired device token.
+     */
+    var cdnAllowLinks: Boolean
+        get() = prefs.getBoolean(CDN_ALLOW_LINKS, CdnSettings.DEFAULT_ALLOW_LINKS)
+        set(enabled) = prefs.edit().putBoolean(CDN_ALLOW_LINKS, enabled).apply()
+
+    /** Asks before downscaling an oversized attachment instead of doing it silently. */
+    var cdnAskCompress: Boolean
+        get() = prefs.getBoolean(CDN_ASK_COMPRESS, CdnSettings.DEFAULT_ASK_COMPRESS)
+        set(enabled) = prefs.edit().putBoolean(CDN_ASK_COMPRESS, enabled).apply()
+
+    /** App-side pre-check against the bridge's `max_file_bytes`, clamped on read. */
+    var cdnUploadLimitMb: Int
+        get() = CdnSettings.coerceUploadLimitMb(
+            prefs.getInt(CDN_UPLOAD_LIMIT_MB, CdnSettings.DEFAULT_UPLOAD_LIMIT_MB)
+        )
+        set(limit) = prefs.edit().putInt(CDN_UPLOAD_LIMIT_MB, CdnSettings.coerceUploadLimitMb(limit)).apply()
+
+    /** Default link lifetime sent as `?expires=`, clamped to the bridge's 365d cap. */
+    var cdnExpiryDays: Int
+        get() = CdnExpiry.coerceDays(prefs.getInt(CDN_EXPIRY_DAYS, CdnExpiry.DEFAULT_DAYS))
+        set(days) = prefs.edit().putInt(CDN_EXPIRY_DAYS, CdnExpiry.coerceDays(days)).apply()
+
+    /** Asks for the link lifetime on every upload instead of using [cdnExpiryDays]. */
+    var cdnAskExpiry: Boolean
+        get() = prefs.getBoolean(CDN_ASK_EXPIRY, CdnSettings.DEFAULT_ASK_EXPIRY)
+        set(enabled) = prefs.edit().putBoolean(CDN_ASK_EXPIRY, enabled).apply()
+
+    /** Snapshot of the file-service settings used by the send path. */
+    internal fun cdnSettings(): CdnSettings = CdnSettings(
+        allowLinks = cdnAllowLinks,
+        askCompress = cdnAskCompress,
+        uploadLimitMb = cdnUploadLimitMb,
+        expiryDays = cdnExpiryDays,
+        askExpiry = cdnAskExpiry,
+    ).coerce()
 
     /** Returns the stored bearer token, generating and persisting a 32 hex char token on first use. */
     @Synchronized
