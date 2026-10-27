@@ -20,6 +20,9 @@ Automate, …) without any UI interaction.
 Everything is a **broadcast** with the result delivered through `setResultData(...)` as a
 single-line JSON object.
 
+Sending and receiving oversized attachments through the bridge's encrypted file service is
+documented separately in [`cdn-file-service.md`](cdn-file-service.md).
+
 ## Enabling
 
 - Preference `control_enabled` (default **off**). While off, every control command returns

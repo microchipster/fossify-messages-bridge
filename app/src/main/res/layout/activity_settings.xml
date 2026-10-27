@@ -603,17 +603,48 @@
             </RelativeLayout>
 
             <RelativeLayout
-                android:id="@+id/settings_cdn_allow_links_holder"
-                style="@style/SettingsHolderSwitchStyle"
+                android:id="@+id/settings_cdn_threshold_holder"
+                style="@style/SettingsHolderTextViewStyle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content">
 
-                <org.fossify.commons.views.MyMaterialSwitch
-                    android:id="@+id/settings_cdn_allow_links"
-                    style="@style/SettingsSwitchStyle"
-                    android:layout_width="match_parent"
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_cdn_threshold_label"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="@string/cdn_allow_links" />
+                    android:text="@string/cdn_send_threshold" />
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_cdn_threshold"
+                    style="@style/SettingsTextValueStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/settings_cdn_threshold_label"
+                    tools:text="@string/cdn_threshold_auto" />
+
+            </RelativeLayout>
+
+            <RelativeLayout
+                android:id="@+id/settings_cdn_send_mode_holder"
+                style="@style/SettingsHolderTextViewStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_cdn_send_mode_label"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/cdn_send_mode" />
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/settings_cdn_send_mode"
+                    style="@style/SettingsTextValueStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/settings_cdn_send_mode_label"
+                    tools:text="@string/cdn_mode_ask" />
 
             </RelativeLayout>
 
