@@ -202,8 +202,10 @@ class PairingPoller(private val context: Context) {
             }
         }
         if (response.reset || response.commands.isNotEmpty()) {
-            // Never move the cursor backwards, even when a stale response arrives late.
-            store.queueCursor = maxOf(store.queueCursor, response.cursor)
+            // A reset is authoritative (the bridge dropped its queue and may
+            // report a lower cursor); otherwise never move backwards, even
+            // when a stale response arrives late.
+            store.queueCursor = nextQueueCursor(store.queueCursor, response.cursor, response.reset)
         }
     }
 
