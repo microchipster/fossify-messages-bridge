@@ -29,6 +29,7 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
         private const val BRIDGE_DEVICE_ID = "bridge_device_id"
         private const val CONTROL_ENABLED = "control_enabled"
         private const val CONTROL_TOKEN = "control_token"
+        private const val PROVISIONED_AT = "provisioned_at"
         private const val TOKEN_RANDOM_BYTES = 16
 
         fun newInstance(context: Context) = BridgeConfig(context)
@@ -80,6 +81,19 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
     var controlToken: String
         get() = prefs.getString(CONTROL_TOKEN, "").orEmpty()
         set(token) = prefs.edit().putString(CONTROL_TOKEN, token).apply()
+
+    /**
+     * Timestamp of the last successful `control.PROVISION` (0 = never
+     * provisioned). Zero-touch installs set it so a device can be told apart
+     * from a hand-configured one; see `docs/bridge-mode.md`.
+     */
+    var provisionedAt: Long
+        get() = prefs.getLong(PROVISIONED_AT, 0L)
+        set(timestamp) = prefs.edit().putLong(PROVISIONED_AT, timestamp).apply()
+
+    /** True once a `control.PROVISION` applied a config. */
+    val isProvisioned: Boolean
+        get() = provisionedAt > 0L
 
     /**
      * True while some bridge transport is active: the static-token agent mode

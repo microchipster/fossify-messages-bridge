@@ -75,6 +75,40 @@
                 layout="@layout/divider" />
 
             <TextView
+                android:id="@+id/conversation_history_heading"
+                style="@style/SettingsSectionLabelStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/history" />
+
+            <RelativeLayout
+                android:id="@+id/conversation_history_retention_holder"
+                style="@style/SettingsHolderTextViewStyle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/conversation_history_retention_label"
+                    style="@style/SettingsTextLabelStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/history_retention" />
+
+                <org.fossify.commons.views.MyTextView
+                    android:id="@+id/conversation_history_retention"
+                    style="@style/SettingsTextValueStyle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_below="@id/conversation_history_retention_label"
+                    tools:text="@string/history_retention_forever" />
+
+            </RelativeLayout>
+
+            <include
+                android:id="@+id/settings_conversation_history_divider"
+                layout="@layout/divider" />
+
+            <TextView
                 android:id="@+id/conversation_name_heading"
                 style="@style/SettingsSectionLabelStyle"
                 android:layout_width="match_parent"

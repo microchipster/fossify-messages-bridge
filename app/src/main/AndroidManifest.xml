@@ -221,6 +221,7 @@
                 <action android:name="org.fossify.messages.bridge.control.UNPAIR" />
                 <action android:name="org.fossify.messages.bridge.control.SEND" />
                 <action android:name="org.fossify.messages.bridge.control.SYNC" />
+                <action android:name="org.fossify.messages.bridge.control.PROVISION" />
             </intent-filter>
         </receiver>
 
@@ -276,6 +277,10 @@
 
         <receiver
             android:name=".receivers.ScheduledMessageReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".receivers.HistoryCleanupReceiver"
             android:exported="false" />
 
         <receiver

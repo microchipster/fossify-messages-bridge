@@ -11,6 +11,7 @@ package org.fossify.messages.control
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.long
@@ -32,6 +33,7 @@ class ControlContractTest {
             ControlCommand.UNPAIR,
             ControlCommand.SEND,
             ControlCommand.SYNC,
+            ControlCommand.PROVISION,
         )
         for (command in commands) {
             assertEquals("org.fossify.messages.bridge.control.${command.commandName}", command.action)
@@ -137,6 +139,53 @@ class ControlContractTest {
         assertEquals(
             "config key 'control_token' must be a string",
             ControlContract.validateConfig(ControlContract.objectOrNull("""{"control_token":1}""")!!),
+        )
+    }
+
+    @Test
+    fun validateProvisionAcceptsBootstrapKeys() {
+        val valid = ControlContract.objectOrNull(
+            """{"bridge_enabled":true,"bridge_port":8391,"bridge_device_id":"id",
+               "bridge_hs_url":"https://matrix.example.com","bridge_base_url":"https://bridge.example.com",
+               "control_enabled":true,"control_token":"c"}"""
+        )!!
+        assertNull(ControlContract.validateProvision(valid))
+        assertNull(ControlContract.validateProvision(ControlContract.objectOrNull("{}")!!))
+    }
+
+    @Test
+    fun validateProvisionRejectsBridgeTokenAndWrongTypes() {
+        assertEquals(
+            "unknown config key 'bridge_token'",
+            ControlContract.validateProvision(ControlContract.objectOrNull("""{"bridge_token":"t"}""")!!),
+        )
+        assertEquals(
+            "config key 'control_enabled' must be a boolean",
+            ControlContract.validateProvision(ControlContract.objectOrNull("""{"control_enabled":"yes"}""")!!),
+        )
+        assertEquals(
+            "config key 'bridge_port' must be between 1024 and 65535",
+            ControlContract.validateProvision(ControlContract.objectOrNull("""{"bridge_port":1}""")!!),
+        )
+    }
+
+    @Test
+    fun provisionJsonMatchesTheDocumentedShape() {
+        val payload = json.parseToJsonElement(
+            ControlContract.provisionJson(
+                ControlProvisionPayload(
+                    provisioned = true,
+                    provisionedAtMs = 1761600000000L,
+                    applied = listOf("bridge_enabled", "control_token"),
+                )
+            )
+        ).jsonObject
+        assertEquals(setOf("provisioned", "provisioned_at_ms", "applied"), payload.keys)
+        assertTrue(payload["provisioned"]!!.jsonPrimitive.boolean)
+        assertEquals(1761600000000L, payload["provisioned_at_ms"]!!.jsonPrimitive.long)
+        assertEquals(
+            listOf("bridge_enabled", "control_token"),
+            payload["applied"]!!.jsonArray.map { it.jsonPrimitive.content },
         )
     }
 

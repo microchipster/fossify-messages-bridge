@@ -23,7 +23,8 @@ enum class ControlCommand(val commandName: String) {
     PAIR("PAIR"),
     UNPAIR("UNPAIR"),
     SEND("SEND"),
-    SYNC("SYNC");
+    SYNC("SYNC"),
+    PROVISION("PROVISION");
 
     val action: String
         get() = ControlContract.ACTION_PREFIX + commandName
@@ -97,6 +98,9 @@ object ControlContract {
     const val FIELD_MODE = "mode"
     const val FIELD_PAIR_HS = "hs"
     const val FIELD_PAIR_BRIDGE = "b"
+    const val FIELD_PROVISIONED = "provisioned"
+    const val FIELD_PROVISIONED_AT_MS = "provisioned_at_ms"
+    const val FIELD_APPLIED = "applied"
 
     /** The configuration keys `control.CONFIG` accepts; anything else is rejected. */
     val CONFIG_KEYS = setOf(
@@ -104,6 +108,22 @@ object ControlContract {
         FIELD_BRIDGE_PORT,
         FIELD_BRIDGE_DEVICE_ID,
         FIELD_BRIDGE_TOKEN,
+        FIELD_BRIDGE_HS_URL,
+        FIELD_BRIDGE_BASE_URL,
+        FIELD_CONTROL_ENABLED,
+        FIELD_CONTROL_TOKEN,
+    )
+
+    /**
+     * The bootstrap keys `control.PROVISION` accepts; anything else is
+     * rejected. The static bridge token is deliberately absent - provisioning
+     * sets the control surface, and a bridge token can be applied later with
+     * `control.CONFIG`.
+     */
+    val PROVISION_KEYS = setOf(
+        FIELD_BRIDGE_ENABLED,
+        FIELD_BRIDGE_PORT,
+        FIELD_BRIDGE_DEVICE_ID,
         FIELD_BRIDGE_HS_URL,
         FIELD_BRIDGE_BASE_URL,
         FIELD_CONTROL_ENABLED,
@@ -188,9 +208,14 @@ object ControlContract {
     }
 
     /** Returns the first validation problem of a `control.CONFIG` payload, or null when it is valid. */
+    fun validateConfig(payload: JsonObject): String? = validatePayload(payload, CONFIG_KEYS)
+
+    /** Returns the first validation problem of a `control.PROVISION` payload, or null when it is valid. */
+    fun validateProvision(payload: JsonObject): String? = validatePayload(payload, PROVISION_KEYS)
+
     @Suppress("ReturnCount")
-    fun validateConfig(payload: JsonObject): String? {
-        val unknown = payload.keys.firstOrNull { it !in CONFIG_KEYS }
+    private fun validatePayload(payload: JsonObject, allowedKeys: Set<String>): String? {
+        val unknown = payload.keys.firstOrNull { it !in allowedKeys }
         if (unknown != null) {
             return "unknown config key '$unknown'"
         }
@@ -234,6 +259,8 @@ object ControlContract {
     fun statusJson(status: ControlStatusPayload): String = encode(status)
 
     fun configJson(config: ControlConfigPayload): String = encode(config)
+
+    fun provisionJson(result: ControlProvisionPayload): String = encode(result)
 
     fun pairJson(result: ControlPairPayload): String = encode(result)
 
@@ -292,6 +319,14 @@ data class ControlConfigPayload(
     @SerialName(ControlContract.FIELD_BRIDGE_BASE_URL) val bridgeBaseUrl: String? = null,
     @SerialName(ControlContract.FIELD_CONTROL_ENABLED) val controlEnabled: Boolean? = null,
     @SerialName(ControlContract.FIELD_CONTROL_TOKEN_SET) val controlTokenSet: Boolean? = null,
+)
+
+/** `control.PROVISION` result: the bootstrap applied its config and marked the device provisioned. */
+@Serializable
+data class ControlProvisionPayload(
+    @SerialName(ControlContract.FIELD_PROVISIONED) val provisioned: Boolean,
+    @SerialName(ControlContract.FIELD_PROVISIONED_AT_MS) val provisionedAtMs: Long,
+    @SerialName(ControlContract.FIELD_APPLIED) val applied: List<String>,
 )
 
 /** `control.PAIR` result. */

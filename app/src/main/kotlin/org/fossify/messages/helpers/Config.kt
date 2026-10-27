@@ -151,4 +151,39 @@ class Config(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(KEEP_CONVERSATIONS_ARCHIVED, false)
         set(keepConversationsArchived) = prefs.edit()
             .putBoolean(KEEP_CONVERSATIONS_ARCHIVED, keepConversationsArchived).apply()
+
+    /**
+     * Global retention of the message history in days; [HistoryRetention.KEEP_FOREVER]
+     * (the default) keeps everything. Individual conversations can override it
+     * through [historyRetentionOverrides].
+     */
+    var historyRetentionDays: Int
+        get() = prefs.getInt(HISTORY_RETENTION_DAYS, HistoryRetention.KEEP_FOREVER)
+        set(days) = prefs.edit().putInt(HISTORY_RETENTION_DAYS, days).apply()
+
+    /** Lean per-conversation overrides of [historyRetentionDays], stored as one JSON object. */
+    var historyRetentionOverrides: Map<Long, Int>
+        get() = HistoryRetentionOverrides.decode(prefs.getString(HISTORY_RETENTION_OVERRIDES, ""))
+        set(overrides) = prefs.edit()
+            .putString(HISTORY_RETENTION_OVERRIDES, HistoryRetentionOverrides.encode(overrides)).apply()
+
+    /** Enabled redaction presets and custom extension patterns, stored as one JSON object. */
+    var historyRedactions: RedactionConfig
+        get() = RedactionConfig.parse(prefs.getString(HISTORY_REDACTION_CONFIG, ""))
+        set(redactions) = prefs.edit()
+            .putString(HISTORY_REDACTION_CONFIG, redactions.encode()).apply()
+
+    /** Timestamp of the last daily retention check, so opening the app does not repeat it. */
+    var lastHistoryCleanupCheck: Long
+        get() = prefs.getLong(LAST_HISTORY_CLEANUP_CHECK, 0L)
+        set(timestamp) = prefs.edit().putLong(LAST_HISTORY_CLEANUP_CHECK, timestamp).apply()
+}
+
+/** Sets or clears (passing null) the retention override of one conversation. */
+fun Config.setConversationRetention(threadId: Long, days: Int?) {
+    historyRetentionOverrides = if (days == null) {
+        historyRetentionOverrides - threadId
+    } else {
+        historyRetentionOverrides + (threadId to days)
+    }
 }
