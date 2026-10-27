@@ -74,10 +74,11 @@ internal object CdnCrypto {
                 null
             } else {
                 val nonce = payload.copyOfRange(0, NONCE_BYTES)
-                val sealed = payload.copyOfRange(NONCE_BYTES, payload.size)
                 val cipher = Cipher.getInstance(TRANSFORMATION)
                 cipher.init(Cipher.DECRYPT_MODE, SecretKeySpec(key, KEY_ALGORITHM), GCMParameterSpec(TAG_BITS, nonce))
-                cipher.doFinal(sealed)
+                // Sealed data starts at NONCE_BYTES; decrypting in place avoids a
+                // full payload copy on the large downloads the render path makes.
+                cipher.doFinal(payload, NONCE_BYTES, payload.size - NONCE_BYTES)
             }
         } catch (expected: Exception) {
             null
