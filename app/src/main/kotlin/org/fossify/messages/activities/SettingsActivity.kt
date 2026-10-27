@@ -33,10 +33,13 @@ import org.fossify.messages.R
 import org.fossify.messages.bridge.BridgeConfig
 import org.fossify.messages.bridge.CdnDiscovery
 import org.fossify.messages.bridge.CdnExpiry
+import org.fossify.messages.bridge.CdnSendMode
 import org.fossify.messages.bridge.CdnSettings
+import org.fossify.messages.bridge.CdnThreshold
 import org.fossify.messages.bridge.PairingActivity
 import org.fossify.messages.bridge.PairingStore
 import org.fossify.messages.databinding.ActivitySettingsBinding
+import org.fossify.messages.dialogs.CdnThresholdDialog
 import org.fossify.messages.dialogs.ExportMessagesDialog
 import org.fossify.messages.dialogs.RedactionPatternsDialog
 import org.fossify.messages.extensions.config
@@ -186,10 +189,23 @@ class SettingsActivity : SimpleActivity() {
     private fun setupCdnSettings() = binding.apply {
         val bridge = BridgeConfig.newInstance(this@SettingsActivity)
 
-        settingsCdnAllowLinks.isChecked = bridge.cdnAllowLinks
-        settingsCdnAllowLinksHolder.setOnClickListener {
-            settingsCdnAllowLinks.toggle()
-            bridge.cdnAllowLinks = settingsCdnAllowLinks.isChecked
+        settingsCdnThreshold.text = getCdnThresholdText(bridge.cdnThresholdMb)
+        settingsCdnThresholdHolder.setOnClickListener {
+            showCdnThresholdPicker(bridge)
+        }
+
+        settingsCdnSendMode.text = getCdnSendModeText(bridge.cdnSendMode)
+        settingsCdnSendModeHolder.setOnClickListener {
+            val items = arrayListOf(
+                RadioItem(1, getString(R.string.cdn_mode_ask), CdnSendMode.ASK),
+                RadioItem(2, getString(R.string.cdn_mode_link), CdnSendMode.LINK),
+                RadioItem(3, getString(R.string.cdn_mode_never), CdnSendMode.NEVER),
+            )
+            val checkedItemId = items.first { it.value == bridge.cdnSendMode }.id
+            RadioGroupDialog(this@SettingsActivity, items, checkedItemId) {
+                bridge.cdnSendMode = it as CdnSendMode
+                settingsCdnSendMode.text = getCdnSendModeText(bridge.cdnSendMode)
+            }
         }
 
         settingsCdnAskCompress.isChecked = bridge.cdnAskCompress
@@ -237,11 +253,51 @@ class SettingsActivity : SimpleActivity() {
         }
     }
 
-    /** The link path stays inert until the bridge advertises a `cdn_base_url`. */
+    /** The mode is only meaningful once the bridge advertises a `cdn_base_url`. */
     private fun setCdnLinksAvailability(cdnBaseUrl: String) = binding.apply {
         val available = cdnBaseUrl.isNotEmpty()
-        settingsCdnAllowLinks.isEnabled = available
-        settingsCdnAllowLinksHolder.isEnabled = available
+        settingsCdnSendMode.isEnabled = available
+        settingsCdnSendModeHolder.isEnabled = available
+    }
+
+    private fun getCdnSendModeText(mode: CdnSendMode) = getString(
+        when (mode) {
+            CdnSendMode.ASK -> R.string.cdn_mode_ask
+            CdnSendMode.LINK -> R.string.cdn_mode_link
+            CdnSendMode.NEVER -> R.string.cdn_mode_never
+        }
+    )
+
+    private fun getCdnThresholdText(thresholdMb: Int) = if (thresholdMb == CdnThreshold.AUTO_MB) {
+        getString(R.string.cdn_threshold_auto)
+    } else {
+        getString(R.string.cdn_threshold_mb, thresholdMb)
+    }
+
+    private fun showCdnThresholdPicker(bridge: BridgeConfig) {
+        val items = arrayListOf<RadioItem>()
+        items += RadioItem(1, getString(R.string.cdn_threshold_auto), CdnThreshold.AUTO_MB)
+        CdnThreshold.CHOICES_MB.forEachIndexed { index, mb ->
+            items += RadioItem(index + 2, getString(R.string.cdn_threshold_mb, mb), mb)
+        }
+        items += RadioItem(items.size + 1, getString(R.string.cdn_threshold_custom), CdnThreshold.CUSTOM_MB)
+
+        val checkedItemId = items.firstOrNull { it.value == bridge.cdnThresholdMb }?.id ?: items.last().id
+        RadioGroupDialog(this, items, checkedItemId) { chosen ->
+            if (chosen == CdnThreshold.CUSTOM_MB) {
+                CdnThresholdDialog(this, bridge.cdnThresholdMb) { mb ->
+                    bridge.cdnThresholdMb = mb
+                    updateCdnThresholdText(bridge)
+                }
+            } else {
+                bridge.cdnThresholdMb = chosen as Int
+                updateCdnThresholdText(bridge)
+            }
+        }
+    }
+
+    private fun updateCdnThresholdText(bridge: BridgeConfig) = binding.apply {
+        settingsCdnThreshold.text = getCdnThresholdText(bridge.cdnThresholdMb)
     }
 
     override fun onPause() {

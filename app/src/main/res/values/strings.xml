@@ -34,7 +34,17 @@
     <string name="bridge_pairing_scan_failed">Cannot open the QR scanner</string>
     <!-- Bridge file service -->
     <string name="bridge_settings">Bridge</string>
-    <string name="cdn_allow_links">Send large files as encrypted CDN links</string>
+    <string name="cdn_send_threshold">Send files larger than</string>
+    <string name="cdn_threshold_auto">Auto (carrier MMS limit)</string>
+    <string name="cdn_threshold_custom">Custom…</string>
+    <string name="cdn_threshold_custom_title">Custom size</string>
+    <string name="cdn_threshold_hint">Size in MB</string>
+    <string name="cdn_threshold_invalid">Enter a size between %1$d and %2$d MB</string>
+    <string name="cdn_threshold_mb">%1$d MB</string>
+    <string name="cdn_send_mode">For files above the limit</string>
+    <string name="cdn_mode_ask">Always ask</string>
+    <string name="cdn_mode_link">Encrypted link</string>
+    <string name="cdn_mode_never">Never</string>
     <string name="cdn_ask_compress">Ask before compressing large attachments</string>
     <string name="cdn_upload_limit">Maximum upload size</string>
     <string name="cdn_upload_limit_mb">%1$d MB</string>

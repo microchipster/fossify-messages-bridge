@@ -27,7 +27,9 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
         private const val BRIDGE_TOKEN = "bridge_token"
         private const val BRIDGE_PORT = "bridge_port"
         private const val BRIDGE_DEVICE_ID = "bridge_device_id"
-        private const val CDN_ALLOW_LINKS = "cdn_allow_links"
+        private const val LEGACY_CDN_ALLOW_LINKS = "cdn_allow_links"
+        private const val CDN_SEND_MODE = "cdn_send_mode"
+        private const val CDN_THRESHOLD_MB = "cdn_threshold_mb"
         private const val CDN_ASK_COMPRESS = "cdn_ask_compress"
         private const val CDN_UPLOAD_LIMIT_MB = "cdn_upload_limit_mb"
         private const val CDN_EXPIRY_DAYS = "cdn_expiry_days"
@@ -109,13 +111,40 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
     }
 
     /**
-     * Allows uploading oversized attachments to the bridge's encrypted file
-     * service and putting the link into the message instead. Inert until the
-     * bridge advertises a `cdn_base_url` over a paired device token.
+     * What happens to attachments above [cdnThresholdMb]: ask (default),
+     * upload as an encrypted link without asking, or never offer a link.
+     *
+     * Migrates the legacy `cdn_allow_links` boolean once: a checked switch
+     * kept the ask dialog ([CdnSendMode.ASK]), an unchecked one never offered
+     * links ([CdnSendMode.NEVER]), so an existing install behaves as before.
      */
-    var cdnAllowLinks: Boolean
-        get() = prefs.getBoolean(CDN_ALLOW_LINKS, CdnSettings.DEFAULT_ALLOW_LINKS)
-        set(enabled) = prefs.edit().putBoolean(CDN_ALLOW_LINKS, enabled).apply()
+    internal var cdnSendMode: CdnSendMode
+        get() {
+            val stored = prefs.getString(CDN_SEND_MODE, null)
+            val legacy = if (prefs.contains(LEGACY_CDN_ALLOW_LINKS)) {
+                prefs.getBoolean(LEGACY_CDN_ALLOW_LINKS, false)
+            } else {
+                null
+            }
+            val mode = CdnSettings.resolveMode(stored, legacy)
+            if (stored == null && legacy != null) {
+                prefs.edit()
+                    .putString(CDN_SEND_MODE, mode.preferenceValue)
+                    .remove(LEGACY_CDN_ALLOW_LINKS)
+                    .apply()
+            }
+            return mode
+        }
+        set(mode) = prefs.edit().putString(CDN_SEND_MODE, mode.preferenceValue).apply()
+
+    /**
+     * Files above this size in MB take [cdnSendMode]; [CdnThreshold.AUTO_MB]
+     * follows the carrier MMS limit, clamped on read. Inert until the bridge
+     * advertises a `cdn_base_url` over a paired device token.
+     */
+    internal var cdnThresholdMb: Int
+        get() = CdnThreshold.coerceMb(prefs.getInt(CDN_THRESHOLD_MB, CdnThreshold.AUTO_MB))
+        set(mb) = prefs.edit().putInt(CDN_THRESHOLD_MB, CdnThreshold.coerceMb(mb)).apply()
 
     /** Asks before downscaling an oversized attachment instead of doing it silently. */
     var cdnAskCompress: Boolean
@@ -141,7 +170,8 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
 
     /** Snapshot of the file-service settings used by the send path. */
     internal fun cdnSettings(): CdnSettings = CdnSettings(
-        allowLinks = cdnAllowLinks,
+        mode = cdnSendMode,
+        thresholdMb = cdnThresholdMb,
         askCompress = cdnAskCompress,
         uploadLimitMb = cdnUploadLimitMb,
         expiryDays = cdnExpiryDays,

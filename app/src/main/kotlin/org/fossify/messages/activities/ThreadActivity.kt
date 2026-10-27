@@ -112,9 +112,11 @@ import org.fossify.messages.bridge.BridgeConfig
 import org.fossify.messages.bridge.CdnClient
 import org.fossify.messages.bridge.CdnException
 import org.fossify.messages.bridge.CdnExpiry
+import org.fossify.messages.bridge.CdnSendAction
 import org.fossify.messages.bridge.CdnSendInput
 import org.fossify.messages.bridge.CdnSendOption
 import org.fossify.messages.bridge.CdnSendPath
+import org.fossify.messages.bridge.CdnThreshold
 import org.fossify.messages.bridge.PairingStore
 import org.fossify.messages.databinding.ActivityThreadBinding
 import org.fossify.messages.databinding.ItemSelectedContactBinding
@@ -1576,16 +1578,7 @@ class ThreadActivity : SimpleActivity() {
             toast(org.fossify.commons.R.string.unknown_error_occurred)
             return
         }
-        val isImage = mimeType.isImageMimeType()
-        val isGif = mimeType.isGifMimeType()
-        val cdnInput = if (ignoreCdnChoice) null else buildCdnSendInput(uri, mimeType)
-        if (cdnInput != null && CdnSendPath.needsChoice(cdnInput)) {
-            showCdnSendChoice(cdnInput, uri)
-            return
-        }
-        if ((isGif || !isImage) && cdnInput != null) {
-            // is it assumed that images will always be compressed below the max MMS size limit
-            toast(R.string.attachment_sized_exceeds_max_limit, length = Toast.LENGTH_LONG)
+        if (!ignoreCdnChoice && handleCdnChoice(uri, mimeType)) {
             return
         }
 
@@ -1609,26 +1602,52 @@ class ThreadActivity : SimpleActivity() {
             uri = uri,
             mimetype = mimeType,
             filename = getFilenameFromUri(uri),
-            isPending = isImage && !isGif
+            isPending = mimeType.isImageMimeType() && !mimeType.isGifMimeType()
         )
         adapter.addAttachment(attachment)
         checkSendMessageAvailability()
     }
 
     /**
-     * Builds the decision input for attachments above the MMS limit; null for
-     * anything that keeps the normal small-send path.
+     * Resolves the CDN decision for one attachment and acts on it. Returns true
+     * when the decision took over (dialog, silent upload or refusal), false
+     * when the ordinary attach path should continue.
+     */
+    private fun handleCdnChoice(uri: Uri, mimeType: String): Boolean {
+        val input = buildCdnSendInput(uri, mimeType) ?: return false
+        return when (CdnSendPath.action(input)) {
+            CdnSendAction.LINK -> {
+                askCdnExpiryAndUpload(uri)
+                true
+            }
+            CdnSendAction.ASK -> {
+                showCdnSendChoice(input, uri)
+                true
+            }
+            CdnSendAction.REJECT -> {
+                // is it assumed that images will always be compressed below the max MMS size limit
+                toast(R.string.attachment_sized_exceeds_max_limit, length = Toast.LENGTH_LONG)
+                true
+            }
+            CdnSendAction.NORMAL, CdnSendAction.MMS, CdnSendAction.COMPRESS -> false
+        }
+    }
+
+    /**
+     * Builds the decision input for one attachment; null only when nothing can
+     * trigger the CDN path (no carrier limit and an Auto threshold) or the size
+     * is unknown. Pure comparison lives in [CdnSendPath.action].
      */
     private fun buildCdnSendInput(uri: Uri, mimeType: String): CdnSendInput? {
+        val settings = BridgeConfig.newInstance(this).cdnSettings()
         val mmsFileSizeLimit = config.mmsFileSizeLimit
-        if (mmsFileSizeLimit == FILE_SIZE_NONE) {
+        if (mmsFileSizeLimit == FILE_SIZE_NONE && settings.thresholdMb == CdnThreshold.AUTO_MB) {
             return null
         }
         val fileSize = getFileSizeFromUri(uri)
-        if (fileSize <= mmsFileSizeLimit) {
+        if (fileSize <= 0) {
             return null
         }
-        val settings = BridgeConfig.newInstance(this).cdnSettings()
         return CdnSendInput(
             fileSizeBytes = fileSize,
             mmsLimitBytes = mmsFileSizeLimit,
