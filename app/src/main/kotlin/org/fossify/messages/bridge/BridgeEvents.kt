@@ -206,7 +206,17 @@ object BridgeEvents {
         }
     }
 
-    /** Emits an event for a message sent through POST /v1/send (carries the client [sendId]). */
+    /**
+     * Emits an event for a message sent through POST /v1/send or a queue
+     * `send_sms` / `send_mms` command (carries the client [sendId]).
+     *
+     * The echo deliberately carries the send correlation ([BridgeEvent.sendId]
+     * and, when the provider row is already known, [BridgeEvent.messageId]) and
+     * no recipients: it is not a participant update. The bridge matches it
+     * against the pending outgoing send whether it sees this event or the
+     * `send.result` first, suppresses it, and never reconciles room membership
+     * from its empty participant list.
+     */
     fun onMessageSent(
         context: Context,
         kind: String,
@@ -224,22 +234,52 @@ object BridgeEvents {
                 return
             }
             append(
-                BridgeEvent(
-                    type = TYPE_MESSAGE_NEW,
-                    messageId = if (rowId > 0) BridgeMessageIds.format(kind, normalizeSubId(subId), rowId) else "",
+                sentEvent(
+                    kind = kind,
+                    rowId = rowId,
                     threadId = threadId,
-                    subId = normalizeSubId(subId),
-                    timestampMs = timestampMs,
-                    sender = "",
+                    subId = subId,
+                    body = body,
                     isMms = isMms,
                     hasAttachment = hasAttachment,
-                    preview = preview(body),
                     sendId = sendId,
+                    timestampMs = timestampMs,
                 )
             )
         } catch (e: Exception) {
             Log.e(TAG, "failed to emit sent event", e)
         }
+    }
+
+    /**
+     * Builds the outgoing `message.new` echo without touching Android state, so
+     * the wire payload (send correlation present, recipients absent) is unit
+     * testable.
+     */
+    internal fun sentEvent(
+        kind: String,
+        rowId: Long,
+        threadId: Long,
+        subId: Int,
+        body: String,
+        isMms: Boolean,
+        hasAttachment: Boolean,
+        sendId: String,
+        timestampMs: Long = System.currentTimeMillis(),
+    ): BridgeEvent {
+        return BridgeEvent(
+            type = TYPE_MESSAGE_NEW,
+            messageId = if (rowId > 0) BridgeMessageIds.format(kind, normalizeSubId(subId), rowId) else "",
+            threadId = threadId,
+            subId = normalizeSubId(subId),
+            timestampMs = timestampMs,
+            sender = "",
+            isMms = isMms,
+            hasAttachment = hasAttachment,
+            preview = preview(body),
+            sendId = sendId,
+            recipients = emptyList(),
+        )
     }
 
     fun normalizeSubId(subId: Int) = if (subId < 0) -1 else subId
