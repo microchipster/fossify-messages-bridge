@@ -247,6 +247,14 @@ object BridgeSender {
             hasAttachment = false,
             sendId = sendId,
         )
+        // A send into a thread the bridge has never seen must carry the
+        // participants: the echo above never does, and without them the new
+        // portal would have no members and no sendable recipients.
+        BridgeEvents.onThreadUpdated(
+            context = context,
+            threadId = response.threadId,
+            subId = row?.subId ?: effectiveSubId,
+        )
         return response
     }
 
@@ -312,6 +320,14 @@ object BridgeSender {
             isMms = true,
             hasAttachment = attachments.isNotEmpty(),
             sendId = sendId,
+        )
+        // A send into a thread the bridge has never seen must carry the
+        // participants: the echo above never does, and without them the new
+        // portal would have no members and no sendable recipients.
+        BridgeEvents.onThreadUpdated(
+            context = context,
+            threadId = response.threadId,
+            subId = row?.subId ?: subId,
         )
         return response
     }
