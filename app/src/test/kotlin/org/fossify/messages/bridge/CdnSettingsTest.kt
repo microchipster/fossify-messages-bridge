@@ -18,14 +18,14 @@ import org.junit.Test
 class CdnSettingsTest {
 
     @Test
-    fun defaultsAreConservative() {
+    fun defaultsAreTheShippedPreferences() {
         val settings = CdnSettings.DEFAULTS
 
         assertEquals(CdnSendMode.ASK, settings.mode)
         assertEquals(CdnThreshold.AUTO_MB, settings.thresholdMb)
         assertTrue(settings.askCompress)
         assertFalse(settings.askExpiry)
-        assertEquals(50, settings.uploadLimitMb)
+        assertEquals(250, settings.uploadLimitMb)
         assertEquals(30, settings.expiryDays)
     }
 
@@ -90,9 +90,29 @@ class CdnSettingsTest {
     fun uploadLimitIsClampedIntoRange() {
         assertEquals(1, CdnSettings.coerceUploadLimitMb(0))
         assertEquals(1, CdnSettings.coerceUploadLimitMb(-10))
-        assertEquals(100, CdnSettings.coerceUploadLimitMb(500))
+        assertEquals(250, CdnSettings.coerceUploadLimitMb(251))
+        assertEquals(250, CdnSettings.coerceUploadLimitMb(1000))
         assertEquals(50, CdnSettings.coerceUploadLimitMb(50))
         assertTrue(CdnSettings.UPLOAD_LIMIT_CHOICES.contains(50))
+        assertTrue(CdnSettings.UPLOAD_LIMIT_CHOICES.contains(250))
+        val range = CdnSettings.MIN_UPLOAD_LIMIT_MB..CdnSettings.MAX_UPLOAD_LIMIT_MB
+        assertTrue(CdnSettings.UPLOAD_LIMIT_CHOICES.all { it in range })
+        assertEquals(CdnSettings.MAX_UPLOAD_LIMIT_MB, CdnSettings.UPLOAD_LIMIT_CHOICES.max())
+    }
+
+    @Test
+    fun theDefaultUploadLimitIsTheLargestOfferedSize() {
+        assertEquals(250, CdnSettings.DEFAULT_UPLOAD_LIMIT_MB)
+        assertEquals(CdnSettings.UPLOAD_LIMIT_CHOICES.max(), CdnSettings.DEFAULT_UPLOAD_LIMIT_MB)
+    }
+
+    @Test
+    fun storedLimitsFromThePreviousOptionSetSurvive() {
+        // 10/25/50/100 MB were the offered sizes before 250 MB was added; a
+        // stored preference must not be rewritten or clamped away.
+        listOf(10, 25, 50, 100).forEach { mb ->
+            assertEquals(mb, CdnSettings.coerceUploadLimitMb(mb))
+        }
     }
 
     @Test
@@ -115,8 +135,12 @@ class CdnSettingsTest {
 
     @Test
     fun uploadLimitBytesIncludesWholeMegabytes() {
-        assertEquals(50L * 1024 * 1024, CdnSettings().uploadLimitBytes)
+        val defaultBytes = CdnSettings.DEFAULT_UPLOAD_LIMIT_MB.toLong() * CdnSettings.BYTES_PER_MB
+
+        assertEquals(250L * 1024 * 1024, CdnSettings().uploadLimitBytes)
+        assertEquals(defaultBytes, CdnSettings().uploadLimitBytes)
         assertEquals(10L * 1024 * 1024, CdnSettings(uploadLimitMb = 10).uploadLimitBytes)
+        assertEquals(250L * 1024 * 1024, CdnSettings(uploadLimitMb = 250).uploadLimitBytes)
     }
 
     @Test
@@ -124,7 +148,7 @@ class CdnSettingsTest {
         val coerced = CdnSettings(uploadLimitMb = 1000, expiryDays = 0, thresholdMb = -9).coerce()
 
         assertEquals(CdnThreshold.AUTO_MB, coerced.thresholdMb)
-        assertEquals(100, coerced.uploadLimitMb)
+        assertEquals(250, coerced.uploadLimitMb)
         assertEquals(1, coerced.expiryDays)
     }
 

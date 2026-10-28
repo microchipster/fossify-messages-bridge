@@ -33,9 +33,11 @@ paired device token, so plain SMS/MMS sends are untouched without one.
   - **Never** — the CDN never appears in the send path; oversized images are
     compressed (asking first while **Ask before compressing large
     attachments** is on) and everything else keeps the old behavior.
-- **Maximum upload size**, **Link expiry** and **Ask for the link expiry on
-  every upload** are unchanged. The upload limit is an app-side pre-check
-  against the bridge's own `max_file_bytes`.
+- **Maximum upload size** — 10 / 25 / 50 / 100 / **250 MB** *(default)*. An
+  app-side pre-check against the bridge's own `max_file_bytes`, which allows up
+  to 512 MiB. A stored value keeps working when the option list changes.
+- **Link expiry** and **Ask for the link expiry on every upload** are
+  unchanged.
 
 ## Migration from the old boolean setting
 

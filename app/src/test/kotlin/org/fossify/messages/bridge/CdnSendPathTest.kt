@@ -28,7 +28,7 @@ class CdnSendPathTest {
     private fun input(
         fileSize: Long = 5 * mb,
         mmsLimit: Long = carrierLimit,
-        uploadLimitMb: Int = 50,
+        uploadLimitMb: Int = CdnSettings.DEFAULT_UPLOAD_LIMIT_MB,
         mimeType: String = "video/mp4",
         cdnAdvertised: Boolean = true,
         settings: CdnSettings = CdnSettings(),
@@ -100,6 +100,10 @@ class CdnSendPathTest {
                 MatrixCase(10, CdnSendMode.LINK, 12 * mb, CdnSendAction.LINK),
                 MatrixCase(10, CdnSendMode.NEVER, 12 * mb, CdnSendAction.ASK),
                 MatrixCase(10, CdnSendMode.LINK, 2 * mb, CdnSendAction.ASK),
+                // The default 250 MB upload limit carries 249 MB, drops 251 MB
+                // (the input helper builds the limit from the shipped default).
+                MatrixCase(CdnThreshold.AUTO_MB, CdnSendMode.LINK, 249 * mb, CdnSendAction.LINK),
+                MatrixCase(CdnThreshold.AUTO_MB, CdnSendMode.ASK, 251 * mb, CdnSendAction.ASK),
             )
         )
     }
@@ -194,6 +198,28 @@ class CdnSendPathTest {
         assertFalse(input.linkAvailable)
         assertEquals(CdnSendAction.ASK, CdnSendPath.action(input))
         assertEquals(listOf(CdnSendOption.COMPRESS), CdnSendPath.options(input))
+    }
+
+    @Test
+    fun theDefaultUploadLimitCarriesLargeFilesUpTo250Mb() {
+        val limit = CdnSettings.DEFAULT_UPLOAD_LIMIT_MB * mb
+        val fits = input(
+            fileSize = limit - CdnCrypto.OVERHEAD_BYTES,
+            uploadLimitMb = CdnSettings.DEFAULT_UPLOAD_LIMIT_MB,
+            settings = CdnSettings(mode = CdnSendMode.LINK),
+        )
+        val doesNotFit = input(
+            fileSize = limit - CdnCrypto.OVERHEAD_BYTES + 1,
+            uploadLimitMb = CdnSettings.DEFAULT_UPLOAD_LIMIT_MB,
+            mimeType = "image/jpeg",
+            settings = CdnSettings(mode = CdnSendMode.LINK),
+        )
+
+        assertTrue(fits.linkAvailable)
+        assertEquals(CdnSendAction.LINK, CdnSendPath.action(fits))
+        assertFalse(doesNotFit.linkAvailable)
+        assertFalse(CdnSendPath.options(doesNotFit).contains(CdnSendOption.ENCRYPTED_LINK))
+        assertEquals(CdnSendAction.ASK, CdnSendPath.action(doesNotFit))
     }
 
     @Test

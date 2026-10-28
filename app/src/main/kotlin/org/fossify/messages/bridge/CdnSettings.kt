@@ -69,10 +69,11 @@ internal object CdnThreshold {
  * App-side configuration of the bridge-hosted file service.
  *
  * Kept free of Android APIs so the defaults, clamping, migration and the send
- * path that consumes them are unit-testable. Defaults are conservative: the
- * link path stays off until the bridge advertises a `cdn_base_url`, only files
- * above the threshold (Auto = the carrier MMS limit) are considered, and the
- * default mode asks before anything is uploaded.
+ * path that consumes them are unit-testable. Defaults keep the link path off
+ * until the bridge advertises a `cdn_base_url`, consider only files above the
+ * threshold (Auto = the carrier MMS limit) and ask before anything is
+ * uploaded. The upload limit defaults to the largest offered size, still well
+ * below the bridge's own 512 MiB `max_file_bytes`.
  */
 internal data class CdnSettings(
     val mode: CdnSendMode = CdnSendMode.DEFAULT,
@@ -97,14 +98,14 @@ internal data class CdnSettings(
 
     companion object {
         const val DEFAULT_ASK_COMPRESS = true
-        const val DEFAULT_UPLOAD_LIMIT_MB = 50
+        const val DEFAULT_UPLOAD_LIMIT_MB = 250
         const val DEFAULT_ASK_EXPIRY = false
         const val MIN_UPLOAD_LIMIT_MB = 1
-        const val MAX_UPLOAD_LIMIT_MB = 100
+        const val MAX_UPLOAD_LIMIT_MB = 250
         const val BYTES_PER_MB = 1024L * 1024L
 
         /** Upload limits offered in the settings and in the send path. */
-        val UPLOAD_LIMIT_CHOICES = listOf(10, 25, 50, 100)
+        val UPLOAD_LIMIT_CHOICES = listOf(10, 25, 50, 100, DEFAULT_UPLOAD_LIMIT_MB)
 
         val DEFAULTS = CdnSettings()
 

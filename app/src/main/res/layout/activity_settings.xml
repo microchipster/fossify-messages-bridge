@@ -682,7 +682,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_below="@id/settings_cdn_upload_limit_label"
-                    tools:text="50 MB" />
+                    tools:text="250 MB" />
 
             </RelativeLayout>
 
