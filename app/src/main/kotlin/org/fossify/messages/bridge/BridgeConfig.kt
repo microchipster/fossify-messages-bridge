@@ -151,7 +151,11 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
         get() = prefs.getBoolean(CDN_ASK_COMPRESS, CdnSettings.DEFAULT_ASK_COMPRESS)
         set(enabled) = prefs.edit().putBoolean(CDN_ASK_COMPRESS, enabled).apply()
 
-    /** App-side pre-check against the bridge's `max_file_bytes`, clamped on read. */
+    /**
+     * App-side pre-check against the bridge's `max_file_bytes`, clamped on
+     * read. A stored value survives whatever the option list becomes; only
+     * installs without one get [CdnSettings.DEFAULT_UPLOAD_LIMIT_MB].
+     */
     var cdnUploadLimitMb: Int
         get() = CdnSettings.coerceUploadLimitMb(
             prefs.getInt(CDN_UPLOAD_LIMIT_MB, CdnSettings.DEFAULT_UPLOAD_LIMIT_MB)

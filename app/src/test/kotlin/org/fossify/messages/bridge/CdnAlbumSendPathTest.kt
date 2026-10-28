@@ -136,15 +136,32 @@ class CdnAlbumSendPathTest {
 
     @Test
     fun theAlbumSizeCapDropsTheAlbum() {
-        val sizes = listOf(CdnAlbum.MAX_ALBUM_BYTES / 2, CdnAlbum.MAX_ALBUM_BYTES / 2)
+        // Three items around 167 MB each: every one fits the 250 MB item limit,
+        // their sum does not fit the 500 MiB album cap.
+        val itemSize = CdnAlbum.MAX_ALBUM_BYTES / 3 + mb
+        val sizes = List(3) { itemSize }
         val input = input(
             itemSizes = sizes,
-            mimeTypes = listOf(video, video),
+            mimeTypes = List(sizes.size) { video },
             settings = CdnSettings(mode = CdnSendMode.LINK, uploadLimitMb = CdnSettings.MAX_UPLOAD_LIMIT_MB),
         )
 
+        assertTrue(input.fitsItemLimit)
         assertFalse(input.withinAlbumLimits)
         assertFalse(input.albumOffered)
+    }
+
+    @Test
+    fun theDefaultUploadLimitAdmitsItemsUpTo250Mb() {
+        val nearLimit = CdnSettings.DEFAULT_UPLOAD_LIMIT_MB * mb - CdnCrypto.OVERHEAD_BYTES
+        val input = input(
+            itemSizes = listOf(nearLimit, 2 * mb),
+            settings = CdnSettings(mode = CdnSendMode.LINK),
+        )
+
+        assertTrue(input.fitsItemLimit)
+        assertTrue(input.albumOffered)
+        assertEquals(CdnAlbumSendAction.LINK, CdnAlbumSendPath.action(input))
     }
 
     @Test
