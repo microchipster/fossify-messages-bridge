@@ -55,7 +55,10 @@ class CdnAlbumSendPathTest {
 
     @Test
     fun belowThresholdKeepsTheOrdinaryAttachPathInAskMode() {
-        val input = input(itemSizes = listOf(100 * 1024L, 100 * 1024L), settings = CdnSettings(mode = CdnSendMode.ASK))
+        val input = input(
+            itemSizes = listOf(100 * 1024L, 100 * 1024L),
+            settings = CdnSettings(mode = CdnSendMode.ASK, thresholdMb = CdnThreshold.AUTO_MB),
+        )
 
         assertFalse(input.overThreshold)
         assertFalse(input.albumOffered)
@@ -63,8 +66,20 @@ class CdnAlbumSendPathTest {
     }
 
     @Test
+    fun theShippedDefaultsOfferTheAlbumRightAway() {
+        val input = input(itemSizes = listOf(100 * 1024L, 100 * 1024L), settings = CdnSettings.DEFAULTS)
+
+        assertTrue(input.overThreshold)
+        assertTrue(input.albumOffered)
+        assertEquals(CdnAlbumSendAction.LINK, CdnAlbumSendPath.action(input))
+    }
+
+    @Test
     fun linkModeUploadsEvenBelowTheThreshold() {
-        val input = input(itemSizes = listOf(100 * 1024L, 100 * 1024L), settings = CdnSettings(mode = CdnSendMode.LINK))
+        val input = input(
+            itemSizes = listOf(100 * 1024L, 100 * 1024L),
+            settings = CdnSettings(mode = CdnSendMode.LINK, thresholdMb = CdnThreshold.AUTO_MB),
+        )
 
         assertFalse(input.overThreshold)
         assertTrue(input.albumOffered)
@@ -173,7 +188,7 @@ class CdnAlbumSendPathTest {
         val autoWithoutCarrierLimit = input(
             itemSizes = listOf(2 * mb, 2 * mb),
             mmsLimit = FILE_SIZE_NONE,
-            settings = CdnSettings(mode = CdnSendMode.ASK),
+            settings = CdnSettings(mode = CdnSendMode.ASK, thresholdMb = CdnThreshold.AUTO_MB),
         )
         assertFalse(autoWithoutCarrierLimit.overThreshold)
         assertFalse(autoWithoutCarrierLimit.albumOffered)

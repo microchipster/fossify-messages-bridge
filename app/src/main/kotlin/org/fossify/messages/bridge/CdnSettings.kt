@@ -19,8 +19,13 @@ internal enum class CdnSendMode(val preferenceValue: String) {
     NEVER("never");
 
     companion object {
-        /** Default mode: ask how over-threshold attachments should be sent. */
-        val DEFAULT = ASK
+        /**
+         * Default mode for fresh installs: upload as an encrypted link
+         * without asking. Carrier MMS neither carries the original bytes for
+         * more than about 1 MB nor keeps their fidelity, so links are the
+         * sensible default while [ASK] and [NEVER] stay selectable.
+         */
+        val DEFAULT = LINK
 
         /** Parses a stored preference; unknown or missing values fall back to [DEFAULT]. */
         fun fromPreference(value: String?): CdnSendMode = entries.firstOrNull { it.preferenceValue == value } ?: DEFAULT
@@ -37,13 +42,17 @@ internal enum class CdnSendMode(val preferenceValue: String) {
  * Pickers and resolution of the "send files larger than" threshold.
  *
  * [AUTO_MB] follows the carrier MMS limit, which is the value the send path
- * used before the threshold existed. A fixed value below the carrier limit can
- * push smaller files to the link path, and 0 sends any attachment through it.
+ * used before the threshold existed. [DEFAULT_MB] (0) sends any attachment
+ * through the mode path and is the fresh-install default; a fixed value below
+ * the carrier limit can push smaller files to the link path.
  */
 internal object CdnThreshold {
     const val AUTO_MB = -1
     const val MIN_MB = 0
     const val MAX_MB = 100
+
+    /** Fresh-install default: every attachment takes the mode path. */
+    const val DEFAULT_MB = MIN_MB
 
     /** Sentinel of the hand-typed entry in the settings picker; never stored. */
     const val CUSTOM_MB = -2
@@ -70,14 +79,16 @@ internal object CdnThreshold {
  *
  * Kept free of Android APIs so the defaults, clamping, migration and the send
  * path that consumes them are unit-testable. Defaults keep the link path off
- * until the bridge advertises a `cdn_base_url`, consider only files above the
- * threshold (Auto = the carrier MMS limit) and ask before anything is
- * uploaded. The upload limit defaults to the largest offered size, still well
- * below the bridge's own 512 MiB `max_file_bytes`.
+ * until the bridge advertises a `cdn_base_url`, then upload every attachment
+ * as an encrypted link (threshold 0, Encrypted link): carrier MMS recompresses
+ * media, caps it at about 1 MB in practice and bills per message. Auto (the
+ * carrier MMS limit) and Always ask stay one tap away in the settings. The
+ * upload limit defaults to the largest offered size, still well below the
+ * bridge's own 512 MiB `max_file_bytes`.
  */
 internal data class CdnSettings(
     val mode: CdnSendMode = CdnSendMode.DEFAULT,
-    val thresholdMb: Int = CdnThreshold.AUTO_MB,
+    val thresholdMb: Int = CdnThreshold.DEFAULT_MB,
     val askCompress: Boolean = DEFAULT_ASK_COMPRESS,
     val uploadLimitMb: Int = DEFAULT_UPLOAD_LIMIT_MB,
     val expiryDays: Int = CdnExpiry.DEFAULT_DAYS,
