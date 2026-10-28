@@ -111,8 +111,8 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
     }
 
     /**
-     * What happens to attachments above [cdnThresholdMb]: ask (default),
-     * upload as an encrypted link without asking, or never offer a link.
+     * What happens to attachments above [cdnThresholdMb]: Encrypted link
+     * (the default for fresh installs), ask first, or never offer a link.
      *
      * Migrates the legacy `cdn_allow_links` boolean once: a checked switch
      * kept the ask dialog ([CdnSendMode.ASK]), an unchecked one never offered
@@ -138,12 +138,13 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
         set(mode) = prefs.edit().putString(CDN_SEND_MODE, mode.preferenceValue).apply()
 
     /**
-     * Files above this size in MB take [cdnSendMode]; [CdnThreshold.AUTO_MB]
-     * follows the carrier MMS limit, clamped on read. Inert until the bridge
-     * advertises a `cdn_base_url` over a paired device token.
+     * Files above this size in MB take [cdnSendMode]; [CdnThreshold.DEFAULT_MB]
+     * (0) applies the mode to any attachment, [CdnThreshold.AUTO_MB] follows
+     * the carrier MMS limit, clamped on read. Inert until the bridge advertises
+     * a `cdn_base_url` over a paired device token.
      */
     internal var cdnThresholdMb: Int
-        get() = CdnThreshold.coerceMb(prefs.getInt(CDN_THRESHOLD_MB, CdnThreshold.AUTO_MB))
+        get() = CdnThreshold.coerceMb(prefs.getInt(CDN_THRESHOLD_MB, CdnThreshold.DEFAULT_MB))
         set(mb) = prefs.edit().putInt(CDN_THRESHOLD_MB, CdnThreshold.coerceMb(mb)).apply()
 
     /** Asks before downscaling an oversized attachment instead of doing it silently. */

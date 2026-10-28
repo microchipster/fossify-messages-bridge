@@ -35,6 +35,7 @@
     <!-- Bridge file service -->
     <string name="bridge_settings">Bridge</string>
     <string name="cdn_send_threshold">Send files larger than</string>
+    <string name="cdn_threshold_any">Any size</string>
     <string name="cdn_threshold_auto">Auto (carrier MMS limit)</string>
     <string name="cdn_threshold_custom">Custom…</string>
     <string name="cdn_threshold_custom_title">Custom size</string>

@@ -247,12 +247,25 @@ class CdnSendPathTest {
             val input = input(
                 fileSize = 100 * mb,
                 mmsLimit = FILE_SIZE_NONE,
-                settings = CdnSettings(mode = mode),
+                settings = CdnSettings(mode = mode, thresholdMb = CdnThreshold.AUTO_MB),
             )
 
             assertFalse(input.overThreshold)
             assertEquals(CdnSendAction.NORMAL, CdnSendPath.action(input))
         }
+    }
+
+    @Test
+    fun theShippedDefaultsLinkEveryAttachment() {
+        val input = input(
+            fileSize = 100 * 1024L,
+            mimeType = "image/jpeg",
+            settings = CdnSettings.DEFAULTS,
+        )
+
+        assertTrue(input.overThreshold)
+        assertTrue(input.linkOffered)
+        assertEquals(CdnSendAction.LINK, CdnSendPath.action(input))
     }
 
     @Test

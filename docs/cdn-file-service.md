@@ -16,20 +16,22 @@ paired device token, so plain SMS/MMS sends are untouched without one.
 
 - **Send files larger than** — the attachment size above which the send mode
   applies.
-  - **Auto (carrier MMS limit)** *(default)* — the threshold is the MMS file
-    size limit configured in the app's MMS settings. This matches the behavior
-    the send path had before the threshold existed.
-  - **1 / 5 / 10 MB / custom** — a fixed size. A custom value of `0 MB`
-    applies the mode to any attachment, so with **Encrypted link** even small
-    files become links.
+  - **Any size** *(default)* — every attachment takes the mode path. Carrier
+    MMS is a poor transport for media: real caps are around 1 MB, anything
+    that fits is recompressed and loses fidelity, and each message is billed.
+    A link keeps the original bytes.
+  - **Auto (carrier MMS limit)** — the threshold is the MMS file size limit
+    configured in the app's MMS settings. This matches the behavior the send
+    path had before the threshold existed.
+  - **1 / 5 / 10 MB / custom** — a fixed size, so only larger files are
+    linked. A custom value of `0 MB` behaves like **Any size**.
 - **For files above the limit** — what happens above the threshold.
-  - **Always ask** *(default)* — the choice dialog: encrypted link, compress
-    first (images only), send as MMS when the carrier limit still carries it,
-    or cancel.
-  - **Encrypted link** — uploads right away, without the dialog. When the link
-    path is unavailable (no advertised base URL, file above **Maximum upload
-    size**, upload failure), the app falls back to the ordinary compress/MMS
-    path.
+  - **Encrypted link** *(default)* — uploads right away, without the dialog.
+    When the link path is unavailable (no advertised base URL, file above
+    **Maximum upload size**, upload failure), the app falls back to the
+    ordinary compress/MMS path.
+  - **Always ask** — the choice dialog: encrypted link, compress first (images
+    only), send as MMS when the carrier limit still carries it, or cancel.
   - **Never** — the CDN never appears in the send path; oversized images are
     compressed (asking first while **Ask before compressing large
     attachments** is on) and everything else keeps the old behavior.
@@ -44,15 +46,21 @@ paired device token, so plain SMS/MMS sends are untouched without one.
 Installs that still carry the previous `cdn_allow_links` preference migrate on
 the next read, without a visible step:
 
-| old value | new mode |
+| old value | migrated mode |
 | --- | --- |
 | checked ("Send large files as encrypted CDN links") | **Always ask** — the same dialog as before; the link leaves the device only when tapped |
-| unchecked (default) | **Never** — no CDN offer, compress/MMS exactly as before |
+| unchecked | **Never** — no CDN offer, compress/MMS exactly as before |
 
-The threshold starts at **Auto** (the carrier MMS limit the old send path
-used), and the **Ask before compressing** and **Maximum upload size**
-preferences carry over unchanged. Nothing is uploaded until the user taps the
-link option in the dialog or picks **Encrypted link**.
+Migration does not turn a tap-gated dialog into an automatic upload, and a
+stored mode or threshold always wins over the defaults. The **Ask before
+compressing** and **Maximum upload size** preferences carry over unchanged.
+
+Fresh installs (and installs that never stored a mode) start at **Encrypted
+link** with the **Any size** threshold, so attachments upload as links as soon
+as the bridge advertises a `cdn_base_url`. Set **Always ask** or **Never** to
+keep the carrier in the loop; an **Auto** or fixed threshold restricts links to
+larger files. Nothing is uploaded while the app is unpaired or the bridge
+advertises no `cdn_base_url`.
 
 ## Albums (several media items, one link)
 

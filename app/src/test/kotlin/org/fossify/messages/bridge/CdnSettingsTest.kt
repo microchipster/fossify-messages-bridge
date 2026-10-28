@@ -21,8 +21,9 @@ class CdnSettingsTest {
     fun defaultsAreTheShippedPreferences() {
         val settings = CdnSettings.DEFAULTS
 
-        assertEquals(CdnSendMode.ASK, settings.mode)
-        assertEquals(CdnThreshold.AUTO_MB, settings.thresholdMb)
+        assertEquals(CdnSendMode.LINK, settings.mode)
+        assertEquals(CdnThreshold.DEFAULT_MB, settings.thresholdMb)
+        assertEquals(0, settings.thresholdMb)
         assertTrue(settings.askCompress)
         assertFalse(settings.askExpiry)
         assertEquals(250, settings.uploadLimitMb)
@@ -50,11 +51,11 @@ class CdnSettingsTest {
 
     @Test
     fun missingAndUnknownModesFallBackToTheDefault() {
-        assertEquals(CdnSendMode.ASK, CdnSettings.resolveMode(null, null))
-        assertEquals(CdnSendMode.ASK, CdnSettings.resolveMode("garbage", null))
-        assertEquals(CdnSendMode.ASK, CdnSendMode.fromPreference(null))
-        assertEquals(CdnSendMode.ASK, CdnSendMode.fromPreference("garbage"))
-        assertEquals(CdnSendMode.DEFAULT, CdnSendMode.ASK)
+        assertEquals(CdnSendMode.LINK, CdnSettings.resolveMode(null, null))
+        assertEquals(CdnSendMode.LINK, CdnSettings.resolveMode("garbage", null))
+        assertEquals(CdnSendMode.LINK, CdnSendMode.fromPreference(null))
+        assertEquals(CdnSendMode.LINK, CdnSendMode.fromPreference("garbage"))
+        assertEquals(CdnSendMode.DEFAULT, CdnSendMode.LINK)
     }
 
     @Test
@@ -79,11 +80,21 @@ class CdnSettingsTest {
         val carrier = 2 * CdnSettings.BYTES_PER_MB
 
         assertEquals(carrier, CdnThreshold.bytes(CdnThreshold.AUTO_MB, carrier))
-        assertEquals(carrier, CdnSettings().thresholdBytes(carrier))
+        assertEquals(carrier, CdnSettings(thresholdMb = CdnThreshold.AUTO_MB).thresholdBytes(carrier))
         assertNull(CdnThreshold.bytes(CdnThreshold.AUTO_MB, 0))
         assertNull(CdnThreshold.bytes(CdnThreshold.AUTO_MB, -1))
         assertEquals(0L, CdnThreshold.bytes(0, carrier))
         assertEquals(5 * CdnSettings.BYTES_PER_MB, CdnThreshold.bytes(5, carrier))
+    }
+
+    @Test
+    fun theDefaultThresholdAppliesTheModeToAnySize() {
+        val carrier = 2 * CdnSettings.BYTES_PER_MB
+
+        assertEquals(CdnThreshold.MIN_MB, CdnThreshold.DEFAULT_MB)
+        assertEquals(0, CdnSettings.DEFAULTS.thresholdMb)
+        assertEquals(0L, CdnSettings.DEFAULTS.thresholdBytes(carrier))
+        assertEquals(0L, CdnSettings().thresholdBytes(carrier))
     }
 
     @Test

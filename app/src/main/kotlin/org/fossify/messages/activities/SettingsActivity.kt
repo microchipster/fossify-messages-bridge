@@ -268,17 +268,18 @@ class SettingsActivity : SimpleActivity() {
         }
     )
 
-    private fun getCdnThresholdText(thresholdMb: Int) = if (thresholdMb == CdnThreshold.AUTO_MB) {
-        getString(R.string.cdn_threshold_auto)
-    } else {
-        getString(R.string.cdn_threshold_mb, thresholdMb)
+    private fun getCdnThresholdText(thresholdMb: Int) = when (thresholdMb) {
+        CdnThreshold.AUTO_MB -> getString(R.string.cdn_threshold_auto)
+        CdnThreshold.DEFAULT_MB -> getString(R.string.cdn_threshold_any)
+        else -> getString(R.string.cdn_threshold_mb, thresholdMb)
     }
 
     private fun showCdnThresholdPicker(bridge: BridgeConfig) {
         val items = arrayListOf<RadioItem>()
-        items += RadioItem(1, getString(R.string.cdn_threshold_auto), CdnThreshold.AUTO_MB)
-        CdnThreshold.CHOICES_MB.forEachIndexed { index, mb ->
-            items += RadioItem(index + 2, getString(R.string.cdn_threshold_mb, mb), mb)
+        items += RadioItem(1, getString(R.string.cdn_threshold_any), CdnThreshold.DEFAULT_MB)
+        items += RadioItem(2, getString(R.string.cdn_threshold_auto), CdnThreshold.AUTO_MB)
+        CdnThreshold.CHOICES_MB.forEach { mb ->
+            items += RadioItem(items.size + 1, getString(R.string.cdn_threshold_mb, mb), mb)
         }
         items += RadioItem(items.size + 1, getString(R.string.cdn_threshold_custom), CdnThreshold.CUSTOM_MB)
 
