@@ -74,9 +74,17 @@ PREFIX="${ACTION_PREFIX:-org.fossify.messages.bridge.control}"
 # so `am -n` must be given the fully qualified class after the slash.
 RECEIVER="$PKG/org.fossify.messages.control.ControlReceiver"
 
-ARGS=(shell am broadcast -n "$RECEIVER" -a "$PREFIX.PROVISION" --es config "$CONFIG")
+# sh_quote single-quotes its argument for the device shell: `adb shell` joins
+# its arguments into one command string, so values with spaces, quotes or
+# newlines (JSON configs, message texts) must be quoted for the shell that
+# parses it.
+sh_quote() {
+	printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
+
+ARGS=(shell am broadcast -n "$RECEIVER" -a "$PREFIX.PROVISION" --es config "$(sh_quote "$CONFIG")")
 if [ -n "${CONTROL_TOKEN:-}" ]; then
-	ARGS+=(--es control_token "$CONTROL_TOKEN")
+	ARGS+=(--es control_token "$(sh_quote "$CONTROL_TOKEN")")
 fi
 
 OUTPUT="$(adb -s "$SERIAL" "${ARGS[@]}")"
