@@ -16,6 +16,8 @@ import android.content.pm.ServiceInfo
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.RingtoneManager
+import android.net.ConnectivityManager
+import android.net.Network
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
@@ -59,7 +61,9 @@ class BridgeService : Service() {
             try {
                 if (BridgeConfig.newInstance(context).isActive()) {
                     start(context)
+                    BridgeWatchdog.schedule(context)
                 } else {
+                    BridgeWatchdog.cancel(context)
                     stop(context)
                 }
             } catch (e: Exception) {
@@ -88,6 +92,7 @@ class BridgeService : Service() {
     private var serverPort = 0
     private var serverToken = ""
     private var poller: PairingPoller? = null
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -97,16 +102,19 @@ class BridgeService : Service() {
         val paired = PairingStore.newInstance(this).isPaired
         if (!bridgeEnabled && !paired) {
             running = false
+            BridgeWatchdog.cancel(this)
             stopSelf()
             return START_NOT_STICKY
         }
         running = true
+        BridgeWatchdog.schedule(this)
 
         val port = config.bridgePort.coerceIn(MIN_PORT, MAX_PORT)
         // Only the static-token agent mode uses this token; a phone that is
         // merely paired through the QR flow does not need one.
         val token = if (bridgeEnabled) config.getOrCreateToken() else ""
         startAsForeground(port, bridgeEnabled)
+        BatteryOptimizations.maybeNotify(this)
 
         updateServer(bridgeEnabled, token, port)
 
@@ -119,16 +127,59 @@ class BridgeService : Service() {
             poller = null
         }
 
+        if (paired) {
+            registerNetworkWatcher()
+        } else {
+            unregisterNetworkWatcher()
+        }
+
         return START_STICKY
     }
 
     override fun onDestroy() {
         running = false
+        unregisterNetworkWatcher()
         poller?.stop()
         poller = null
         server?.stop()
         server = null
+        // When the process dies while the bridge is still active, the alarm
+        // brings the service back (a no-op once the bridge is disabled).
+        BridgeWatchdog.schedule(this)
         super.onDestroy()
+    }
+
+    /**
+     * Reconnects the pairing poller as soon as a network is available again
+     * (wifi <-> mobile handovers and after airplane mode).
+     */
+    private fun registerNetworkWatcher() {
+        if (networkCallback != null) {
+            return
+        }
+        val manager = getSystemService(ConnectivityManager::class.java) ?: return
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onAvailable(network: Network) {
+                Log.i(TAG, "network became available, poking the pairing poller")
+                poller?.poke()
+            }
+        }
+        try {
+            manager.registerDefaultNetworkCallback(callback)
+            networkCallback = callback
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to register the network watcher", e)
+        }
+    }
+
+    private fun unregisterNetworkWatcher() {
+        val callback = networkCallback ?: return
+        networkCallback = null
+        try {
+            getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback)
+        } catch (e: Exception) {
+            Log.w(TAG, "failed to unregister the network watcher", e)
+        }
     }
 
     /**

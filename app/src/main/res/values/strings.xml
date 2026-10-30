@@ -5,6 +5,9 @@
     <string name="bridge_service_text">Bridge listening on port %1$d</string>
     <string name="bridge_service_paired_text">Paired with %1$s</string>
     <string name="bridge_service_paired_text_unknown">a Matrix bridge</string>
+    <string name="bridge_battery_channel">Bridge battery optimization</string>
+    <string name="bridge_battery_title">Keep the Messages bridge connected</string>
+    <string name="bridge_battery_text">Android is battery-optimizing this app and may pause it for hours, which makes the bridge look offline. Allow it to keep running in the background to fix that.</string>
     <!-- Bridge pairing -->
     <string name="bridge_pairing">Bridge pairing</string>
     <string name="bridge_pairing_instructions">Pair this phone with a Matrix bridge. Scan the QR code shown by the bridge bot (!sms login), paste the pairing payload, or type the homeserver URL and the pairing code manually.</string>

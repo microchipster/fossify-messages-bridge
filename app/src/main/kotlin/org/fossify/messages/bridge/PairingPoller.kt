@@ -19,7 +19,6 @@ private const val QUEUE_READ_TIMEOUT_MS = QUEUE_WAIT_MS + 15_000
 private const val EVENT_WAIT_MS = 25_000L
 private const val BACKOFF_INITIAL_MS = 5_000L
 private const val BACKOFF_MAX_MS = 5 * 60 * 1000L
-private const val MS_PER_SECOND = 1_000
 
 /**
  * Executes the bridge queue and pushes app events back, see
@@ -48,6 +47,9 @@ class PairingPoller(private val context: Context) {
     private val outbox = PairingOutbox(context, store)
     private val executor = BridgeCommandExecutor(context, outbox)
     private val running = AtomicBoolean(false)
+
+    // Wakes the loops early when connectivity returns (see poke()).
+    private val poke = BackoffPoke(BACKOFF_INITIAL_MS, BACKOFF_MAX_MS)
 
     @Volatile
     private var queueThread: Thread? = null
@@ -85,6 +87,14 @@ class PairingPoller(private val context: Context) {
         queueThread?.interrupt()
         eventThread = null
         queueThread = null
+    }
+
+    /**
+     * Wakes both loops from their backoff sleep so the next request is issued
+     * immediately; [BridgeService] calls this when connectivity returns.
+     */
+    fun poke() {
+        poke.poke()
     }
 
     /**
@@ -141,10 +151,10 @@ class PairingPoller(private val context: Context) {
                     return
                 }
                 Log.w(TAG, "queue request failed: ${e.code}: ${e.message}")
-                backoff = sleepBackoff(backoff)
+                backoff = poke.sleepBackoff(backoff)
             } catch (e: Exception) {
                 Log.w(TAG, "queue request failed", e)
-                backoff = sleepBackoff(backoff)
+                backoff = poke.sleepBackoff(backoff)
             }
         }
     }
@@ -168,7 +178,7 @@ class PairingPoller(private val context: Context) {
                 }
                 if (page.events.isNotEmpty() && !outbox.flush()) {
                     // The queue loop retries with a proper backoff; just do not spin here.
-                    Thread.sleep(BACKOFF_INITIAL_MS)
+                    poke.sleep(BACKOFF_INITIAL_MS)
                 }
             }
         } catch (_: InterruptedException) {
@@ -250,16 +260,7 @@ class PairingPoller(private val context: Context) {
         outbox.flush()
     }
 
-    private fun sleepBackoff(backoff: Long): Long {
-        val sleepMs = backoff.coerceAtMost(BACKOFF_MAX_MS)
-        Log.i(TAG, "retrying in ${sleepMs / MS_PER_SECOND}s")
-        try {
-            Thread.sleep(sleepMs)
-        } catch (_: InterruptedException) {
-            Thread.currentThread().interrupt()
-        }
-        return (sleepMs * 2).coerceAtMost(BACKOFF_MAX_MS)
-    }
+
 }
 
 /** One `GET /_smsmms/v1/queue` command. */
