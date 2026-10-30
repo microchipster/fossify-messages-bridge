@@ -81,17 +81,17 @@ class ControlReceiver : BroadcastReceiver() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                 // The calling identity does not survive the main-thread post on modern Android;
                 // only the sent-from fields still identify the broadcast sender here.
+                val uid = sentFromUid
                 val pkg = sentFromPackage
-                if (pkg != null) {
-                    val granted = context.packageManager.checkPermission(Manifest.permission.DUMP, pkg)
-                    granted == PackageManager.PERMISSION_GRANTED
-                } else {
-                    val uid = sentFromUid
-                    if (uid == Process.INVALID_UID) {
-                        false
-                    } else {
-                        context.checkPermission(Manifest.permission.DUMP, 0, uid) == PackageManager.PERMISSION_GRANTED
-                    }
+                Log.i(TAG, "control broadcast sender: uid=$uid pkg=$pkg")
+                when {
+                    // adb shell and root already have full device access.
+                    uid == Process.SHELL_UID || uid == Process.ROOT_UID -> true
+                    pkg != null -> context.packageManager.checkPermission(Manifest.permission.DUMP, pkg) ==
+                        PackageManager.PERMISSION_GRANTED
+                    uid != Process.INVALID_UID -> context.checkPermission(Manifest.permission.DUMP, 0, uid) ==
+                        PackageManager.PERMISSION_GRANTED
+                    else -> false
                 }
             } else {
                 context.checkCallingPermission(Manifest.permission.DUMP) == PackageManager.PERMISSION_GRANTED
