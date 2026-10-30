@@ -41,7 +41,7 @@ import java.io.File
  *
  * It answers with a single-line JSON object through `setResultData(...)` and
  * stays inert unless the `control_enabled` preference is true and the sender
- * passed the control token or holds `android.permission.DUMP`. Logs never
+ * passed the control token, holds `android.permission.DUMP`, or came from the shell. Logs never
  * contain message bodies or tokens.
  */
 // One broadcast entry point with per-command handlers; every command failure must become a JSON error.
@@ -51,6 +51,10 @@ class ControlReceiver : BroadcastReceiver() {
         private const val TAG = "ControlReceiver"
         private const val DEFAULT_CONTENT_TYPE = "application/octet-stream"
         private const val THREAD_NAME = "ControlReceiver"
+
+        // Intent.FLAG_RECEIVER_FROM_SHELL (hidden platform constant, stable since Android 12): set on
+        // broadcasts sent by `adb shell am broadcast`, the supported no-token bootstrap path.
+        private const val FLAG_RECEIVER_FROM_SHELL = 0x00400000
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -59,7 +63,7 @@ class ControlReceiver : BroadcastReceiver() {
         val authorized = ControlContract.isAuthorized(
             presentedToken = intent.getStringExtra(ControlContract.EXTRA_CONTROL_TOKEN).orEmpty(),
             storedToken = config.controlToken,
-            hasDumpPermission = hasDumpPermission(context),
+            hasDumpPermission = hasDumpPermission(context) || isFromShell(intent),
         )
         val pendingResult = goAsync()
         val appContext = context.applicationContext
@@ -74,6 +78,10 @@ class ControlReceiver : BroadcastReceiver() {
             pendingResult.finish()
         }, THREAD_NAME).start()
     }
+
+    /** True when the broadcast was sent by the shell (`adb shell am broadcast`). */
+    private fun isFromShell(intent: Intent): Boolean =
+        (intent.flags and FLAG_RECEIVER_FROM_SHELL) != 0
 
     /** True when the broadcast sender (e.g. `adb shell`) holds `android.permission.DUMP`. */
     private fun hasDumpPermission(context: Context): Boolean {
