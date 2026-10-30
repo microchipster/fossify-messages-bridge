@@ -12,6 +12,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Process
 import android.util.Base64
 import android.util.Log
 import android.webkit.MimeTypeMap
@@ -77,7 +78,24 @@ class ControlReceiver : BroadcastReceiver() {
     /** True when the broadcast sender (e.g. `adb shell`) holds `android.permission.DUMP`. */
     private fun hasDumpPermission(context: Context): Boolean {
         return try {
-            context.checkCallingPermission(Manifest.permission.DUMP) == PackageManager.PERMISSION_GRANTED
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                // The calling identity does not survive the main-thread post on modern Android;
+                // only the sent-from fields still identify the broadcast sender here.
+                val pkg = sentFromPackage
+                if (pkg != null) {
+                    val granted = context.packageManager.checkPermission(Manifest.permission.DUMP, pkg)
+                    granted == PackageManager.PERMISSION_GRANTED
+                } else {
+                    val uid = sentFromUid
+                    if (uid == Process.INVALID_UID) {
+                        false
+                    } else {
+                        context.checkPermission(Manifest.permission.DUMP, 0, uid) == PackageManager.PERMISSION_GRANTED
+                    }
+                }
+            } else {
+                context.checkCallingPermission(Manifest.permission.DUMP) == PackageManager.PERMISSION_GRANTED
+            }
         } catch (e: Exception) {
             Log.w(TAG, "failed to check the sender permission: ${e.javaClass.simpleName}")
             false
