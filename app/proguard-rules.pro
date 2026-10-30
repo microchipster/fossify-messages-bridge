@@ -44,3 +44,8 @@
 -keepclassmembers,allowobfuscation class ezvcard.parameter.* extends ezvcard.parameter.MediaTypeParameter {
     <init>(java.lang.String, java.lang.String, java.lang.String);
 }
+
+# The reprint library (transitive via Fossify Commons) still references the legacy
+# FingerprintManager, which is no longer part of the compile SDK stubs. It is only used on
+# very old devices; tell R8 the classes are intentionally absent.
+-dontwarn android.hardware.fingerprint.**
