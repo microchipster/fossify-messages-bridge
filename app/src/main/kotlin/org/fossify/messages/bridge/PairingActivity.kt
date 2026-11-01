@@ -9,11 +9,11 @@ package org.fossify.messages.bridge
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.widget.doAfterTextChanged
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import org.fossify.commons.extensions.beVisibleIf
@@ -85,6 +85,16 @@ class PairingActivity : SimpleActivity() {
         binding.pairingPair.setOnClickListener { startPairing() }
         binding.pairingUnpair.setOnClickListener { unpair() }
 
+        val bridgeConfig = BridgeConfig.newInstance(this)
+        binding.pairingControlEnabled.isChecked = bridgeConfig.controlEnabled
+        binding.pairingControlToken.setText(bridgeConfig.controlToken)
+        binding.pairingControlEnabled.setOnCheckedChangeListener { _, checked ->
+            bridgeConfig.controlEnabled = checked
+        }
+        binding.pairingControlToken.doAfterTextChanged { editable ->
+            bridgeConfig.controlToken = editable?.toString().orEmpty()
+        }
+
         binding.pairingDeviceId.setText(PairingClient.deviceId(this))
         handleLaunchIntent(intent)
     }
@@ -96,9 +106,13 @@ class PairingActivity : SimpleActivity() {
     }
 
     /**
-     * Supports launching the pairing screen from a `smsmms://pair?...` link
-     * (deep link, QR payload or `adb shell am start -d ...`) as well as the
-     * `payload` / `device_id` string extras used for scripted pairing.
+     * Supports launching the pairing screen from a pairing link (`smsmms://pair?...`
+     * or the `https://<homeserver>/_smsmms/pair` App Link) as well as the `payload` /
+     * `device_id` string extras used for scripted pairing.
+     *
+     * Launches through a link or an extra never pair automatically: the fields are
+     * filled in and the user has to confirm with the Pair button. Scanning the QR
+     * code and the Use-payload button still pair immediately.
      */
     private fun handleLaunchIntent(intent: Intent?) {
         val deviceId = intent?.getStringExtra(EXTRA_DEVICE_ID)
@@ -106,9 +120,11 @@ class PairingActivity : SimpleActivity() {
             binding.pairingDeviceId.setText(deviceId)
         }
         val payload = intent?.getStringExtra(EXTRA_PAYLOAD) ?: intent?.data?.toString()
-        if (!payload.isNullOrBlank() && payload.startsWith("smsmms://")) {
+        if (!payload.isNullOrBlank() &&
+            (payload.startsWith("smsmms://") || payload.startsWith("http://") || payload.startsWith("https://"))
+        ) {
             binding.pairingPayload.setText(payload)
-            usePayload(payload)
+            usePayload(payload, autoStart = false)
         }
     }
 
@@ -152,8 +168,8 @@ class PairingActivity : SimpleActivity() {
         }
     }
 
-    private fun usePayload(payload: String) {
-        val data = parsePairingPayload(payload)
+    private fun usePayload(payload: String, autoStart: Boolean = true) {
+        val data = PairingPayloads.parse(payload)
         if (data == null) {
             toast(R.string.bridge_pairing_invalid_payload)
             return
@@ -162,6 +178,10 @@ class PairingActivity : SimpleActivity() {
         binding.pairingHomeserverUrl.setText(data.homeserverUrl)
         binding.pairingBridgeUrl.setText(data.bridgeUrl)
         binding.pairingCode.setText(data.code)
+        if (!autoStart) {
+            binding.pairingStatus.text = getString(R.string.bridge_pairing_confirm_hint, data.homeserverUrl)
+            return
+        }
         toast(R.string.bridge_pairing_payload_loaded)
         startPairing()
     }
@@ -187,6 +207,21 @@ class PairingActivity : SimpleActivity() {
             return
         }
 
+        val storedHomeserverUrl = PairingHttp.normalizeUrl(store.homeserverUrl)
+        val targetHomeserverUrl = PairingHttp.normalizeUrl(homeserverUrl)
+        if (store.isPaired && storedHomeserverUrl != null && targetHomeserverUrl != null &&
+            !storedHomeserverUrl.equals(targetHomeserverUrl, ignoreCase = true)
+        ) {
+            val message = getString(
+                R.string.bridge_pairing_server_change_blocked,
+                storedHomeserverUrl,
+                targetHomeserverUrl,
+            )
+            binding.pairingStatus.text = message
+            toast(message)
+            return
+        }
+
         setPairingInProgress(true)
         ensureBackgroundThread {
             val result = runCatching { PairingClient.pair(this@PairingActivity, code, homeserverUrl, bridgeUrl) }
@@ -194,6 +229,8 @@ class PairingActivity : SimpleActivity() {
                 setPairingInProgress(false)
                 result.onSuccess {
                     BridgeService.maybeStart(this@PairingActivity)
+                    binding.pairingPayload.setText("")
+                    binding.pairingCode.setText("")
                     binding.pairingUnpair.beVisibleIf(store.isPaired)
                     binding.pairingStatus.text = currentStatusText()
                     toast(currentStatusText())
@@ -227,24 +264,5 @@ class PairingActivity : SimpleActivity() {
         if (inProgress) {
             binding.pairingStatus.setText(R.string.bridge_pairing_in_progress)
         }
-    }
-
-    private data class PairingPayload(val homeserverUrl: String, val bridgeUrl: String, val code: String)
-
-    private fun parsePairingPayload(payload: String): PairingPayload? {
-        val uri = Uri.parse(payload.trim())
-        val schemeMatches = uri.scheme.equals(PairingClient.PAIRING_SCHEME, ignoreCase = true)
-        val hostMatches = uri.host.equals(PairingClient.PAIRING_HOST, ignoreCase = true)
-        if (!schemeMatches || !hostMatches) {
-            return null
-        }
-
-        val homeserverUrl = uri.getQueryParameter("hs").orEmpty().trim()
-        val bridgeUrl = uri.getQueryParameter("b").orEmpty().trim()
-        val code = uri.getQueryParameter("code").orEmpty().trim()
-        if (homeserverUrl.isEmpty() || code.isEmpty()) {
-            return null
-        }
-        return PairingPayload(homeserverUrl = homeserverUrl, bridgeUrl = bridgeUrl, code = code)
     }
 }

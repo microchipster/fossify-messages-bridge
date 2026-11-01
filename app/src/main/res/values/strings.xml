@@ -35,6 +35,13 @@
     <string name="bridge_pairing_invalid_payload">This is not a valid pairing payload</string>
     <string name="bridge_pairing_camera_denied">Camera permission is needed to scan the QR code</string>
     <string name="bridge_pairing_scan_failed">Cannot open the QR scanner</string>
+    <string name="bridge_pairing_confirm_hint">Review the details below and tap Pair to connect to %1$s</string>
+    <string name="bridge_pairing_server_change_blocked">Already paired to %1$s. Unpair first to pair with %2$s.</string>
+    <string name="bridge_pairing_control_section">Control channel (advanced)</string>
+    <string name="bridge_pairing_control_enabled">Allow control broadcasts</string>
+    <string name="bridge_pairing_control_enabled_helper">Lets adb or Termux send control commands to this app; provision always works.</string>
+    <string name="bridge_pairing_control_token">Control token (optional)</string>
+    <string name="bridge_pairing_control_token_helper">Only needed for senders that are not adb shell or root.</string>
     <!-- Bridge file service -->
     <string name="bridge_settings">Bridge</string>
     <string name="cdn_send_threshold">Send files larger than</string>
