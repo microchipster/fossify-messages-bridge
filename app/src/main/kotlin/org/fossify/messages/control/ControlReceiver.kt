@@ -30,6 +30,7 @@ import org.fossify.messages.bridge.BridgeService
 import org.fossify.messages.bridge.PairingClient
 import org.fossify.messages.bridge.PairingException
 import org.fossify.messages.bridge.PairingOutbox
+import org.fossify.messages.bridge.PairingPayloads
 import org.fossify.messages.bridge.PairingPoller
 import org.fossify.messages.bridge.PairingStore
 import org.fossify.messages.helpers.Config
@@ -285,14 +286,24 @@ class ControlReceiver : BroadcastReceiver() {
 
     @Suppress("ReturnCount")
     private fun pair(context: Context, intent: Intent): String {
-        val payload = ControlContract.objectOrNull(intent.getStringExtra(ControlContract.EXTRA_PAIR))
-            ?: return invalidRequest("pair must be a JSON object")
+        val raw = intent.getStringExtra(ControlContract.EXTRA_PAIR).orEmpty().trim()
+        val link = if (raw.startsWith("{")) null else PairingPayloads.parse(raw)
+        if (link != null) {
+            return pairWith(context, link.code, link.homeserverUrl, link.bridgeUrl, deviceId = "")
+        }
+
+        val payload = ControlContract.objectOrNull(raw)
+            ?: return invalidRequest("pair must be a JSON object or a pairing payload")
         val code = ControlContract.stringValue(payload, ControlContract.FIELD_CODE)
             ?: return invalidRequest("pair needs a 'code' string")
         val hs = ControlContract.stringValue(payload, ControlContract.FIELD_PAIR_HS)
             ?: return invalidRequest("pair needs an 'hs' string")
         val bridgeUrl = ControlContract.stringValue(payload, ControlContract.FIELD_PAIR_BRIDGE).orEmpty()
         val deviceId = ControlContract.stringValue(payload, ControlContract.FIELD_DEVICE_ID).orEmpty()
+        return pairWith(context, code, hs, bridgeUrl, deviceId)
+    }
+
+    private fun pairWith(context: Context, code: String, hs: String, bridgeUrl: String, deviceId: String): String {
         if (deviceId.isNotEmpty()) {
             BridgeConfig.newInstance(context).bridgeDeviceId = deviceId
         }

@@ -125,11 +125,28 @@ object PairingClient {
     /**
      * Runs the whole pairing flow: discovery, `/info` sanity check,
      * `/pair/start`, Keystore signature over the challenge, `/pair/complete`
-     * and persistence of the returned token.
+     * and persistence of the returned token. Applies the local attempt rate
+     * limit and records the outcome in the on-device audit log.
      *
      * Blocking; call it from a background thread. Throws [PairingException].
      */
     fun pair(context: Context, code: String, homeserverUrl: String, bridgeUrlOverride: String = ""): PairingResult {
+        if (PairingAuditLog.recentAttemptCount(context) >= PairingAuditLog.MAX_ATTEMPTS_PER_WINDOW) {
+            PairingAuditLog.record(context, homeserverUrl, "rate_limited")
+            fail("rate_limited", "too many pairing attempts, try again later")
+        }
+        PairingAuditLog.record(context, homeserverUrl, "attempt")
+        return try {
+            val result = pairInternal(context, code, homeserverUrl, bridgeUrlOverride)
+            PairingAuditLog.record(context, result.homeserverUrl, "paired")
+            result
+        } catch (e: PairingException) {
+            PairingAuditLog.record(context, homeserverUrl, "failed:${e.code}")
+            throw e
+        }
+    }
+
+    private fun pairInternal(context: Context, code: String, homeserverUrl: String, bridgeUrlOverride: String = ""): PairingResult {
         val pairingCode = code.trim().uppercase()
         if (pairingCode.isEmpty()) {
             fail("bad_request", "missing pairing code")

@@ -174,6 +174,37 @@
                 android:layout_marginTop="@dimen/activity_margin"
                 android:text="@string/bridge_pairing_unpair"
                 android:visibility="gone" />
+    <org.fossify.commons.views.MyTextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/activity_margin"
+        android:text="@string/bridge_pairing_control_section"
+        android:textStyle="bold" />
+
+    <org.fossify.commons.views.MyMaterialSwitch
+        android:id="@+id/pairing_control_enabled"
+        style="@style/SettingsSwitchStyle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/bridge_pairing_control_enabled" />
+
+    <org.fossify.commons.views.MyTextInputLayout
+        android:id="@+id/pairing_control_token_hint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="@dimen/small_margin"
+        android:hint="@string/bridge_pairing_control_token"
+        app:helperText="@string/bridge_pairing_control_token_helper">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/pairing_control_token"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textVisiblePassword"
+            android:maxLines="1" />
+
+    </org.fossify.commons.views.MyTextInputLayout>
+
 
         </LinearLayout>
 
