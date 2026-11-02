@@ -165,9 +165,7 @@ internal object CdnClient {
 
         val total = context.getFileSizeFromUri(uri)
         requireFitsUploadLimit(total, maxPlaintextBytes)
-        val view = BridgeConfig.newInstance(context).cdnViewMode
-        val viewQuery = CdnSettings.coerceView(view).takeIf { it != CdnSettings.DEFAULT_VIEW }?.let { "&view=$it" }.orEmpty()
-        val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}?expires=${CdnExpiry.durationSpec(expiryDays)}$viewQuery"
+        val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}?expires=${CdnExpiry.durationSpec(expiryDays)}"
         val key = CdnCrypto.generateKey(secureRandom)
         val connection = openConnection(url, token)
         try {
@@ -216,9 +214,7 @@ internal object CdnClient {
         }
         val manifestBody = CdnCrypto.encrypt(CdnCrypto.albumManifestKey(key), CdnAlbum.manifestJson(manifest))
         requireAlbumFits(ciphertextLengths, manifestBody.size)
-        val view = BridgeConfig.newInstance(context).cdnViewMode
-        val viewQuery = CdnSettings.coerceView(view).takeIf { it != CdnSettings.DEFAULT_VIEW }?.let { "&view=$it" }.orEmpty()
-        val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}/albums?expires=${CdnExpiry.durationSpec(expiryDays)}$viewQuery"
+        val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}/albums?expires=${CdnExpiry.durationSpec(expiryDays)}"
         val totalPlaintext = sizes.sum()
         val connection = openConnection(url, token)
         try {
@@ -255,11 +251,11 @@ internal object CdnClient {
      * manifest is small and capped; its names and types are display text only.
      */
     @Suppress("TooGenericExceptionCaught", "ThrowsCount")
-    fun downloadAlbumManifest(baseUrl: String, id: String, keyFragment: String, token: String? = null): List<CdnAlbumItem>? {
+    fun downloadAlbumManifest(baseUrl: String, id: String, keyFragment: String): List<CdnAlbumItem>? {
         val key = CdnCrypto.fragmentToKey(keyFragment)
             ?: throw CdnException(CODE_INVALID_RESPONSE, message = "the link carries no valid file key")
         val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}/$id/manifest"
-        val connection = openDownloadConnection(url, token)
+        val connection = openDownloadConnection(url)
         try {
             val status = connection.responseCode
             if (status == HTTP_NOT_FOUND) {
@@ -284,14 +280,14 @@ internal object CdnClient {
      * [download]. The key never reaches the URL or a log line.
      */
     @Suppress("TooGenericExceptionCaught", "ThrowsCount")
-    fun downloadAlbumItem(baseUrl: String, id: String, index: Int, keyFragment: String, maxBytes: Long, token: String? = null): ByteArray {
+    fun downloadAlbumItem(baseUrl: String, id: String, index: Int, keyFragment: String, maxBytes: Long): ByteArray {
         val key = CdnCrypto.fragmentToKey(keyFragment)
             ?: throw CdnException(CODE_INVALID_RESPONSE, message = "the link carries no valid file key")
         if (index < 0 || index >= CdnAlbum.HARD_MAX_ITEMS) {
             throw CdnException(CODE_INVALID_RESPONSE, message = "the album item index is out of range")
         }
         val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}/$id/items/$index"
-        val connection = openDownloadConnection(url, token)
+        val connection = openDownloadConnection(url)
         try {
             val status = connection.responseCode
             requireDownloadable(status)
@@ -315,11 +311,11 @@ internal object CdnClient {
      * a huge payload fails with [CODE_TOO_LARGE] instead of an OOM.
      */
     @Suppress("TooGenericExceptionCaught")
-    fun download(baseUrl: String, id: String, keyFragment: String, maxBytes: Long, token: String? = null): ByteArray {
+    fun download(baseUrl: String, id: String, keyFragment: String, maxBytes: Long): ByteArray {
         val key = CdnCrypto.fragmentToKey(keyFragment)
             ?: throw CdnException(CODE_INVALID_RESPONSE, message = "the link carries no valid file key")
         val url = "${baseUrl.trimEnd('/')}${CdnLink.PATH_PREFIX}/$id/raw"
-        val connection = openDownloadConnection(url, token)
+        val connection = openDownloadConnection(url)
         try {
             return completeDownload(connection, key, maxBytes)
         } catch (e: Exception) {
@@ -356,23 +352,12 @@ internal object CdnClient {
         return CdnException(CODE_NETWORK, message = e.message ?: "file service download failed", cause = e)
     }
 
-    /**
-     * The device token of the paired owner. Inline previews fetch with it so the
-     * owner's own views never consume a first-view link's single view.
-     */
-    fun ownerToken(context: Context): String? = runCatching {
-        PairingStore.newInstance(context).let { if (it.isPaired) it.token else null }
-    }.getOrNull()
-
-    private fun openDownloadConnection(url: String, token: String? = null): HttpURLConnection {
+    private fun openDownloadConnection(url: String): HttpURLConnection {
         val connection = URL(url).openConnection() as HttpURLConnection
         connection.requestMethod = "GET"
         connection.connectTimeout = CONNECT_TIMEOUT_MS
         connection.readTimeout = DOWNLOAD_TIMEOUT_MS
         connection.setRequestProperty("Accept", "application/octet-stream")
-        if (token != null) {
-            connection.setRequestProperty("Authorization", "Bearer $token")
-        }
         return connection
     }
 

@@ -208,19 +208,6 @@ class SettingsActivity : SimpleActivity() {
             }
         }
 
-        settingsCdnViewMode.text = getCdnViewModeText(bridge.cdnViewMode)
-        settingsCdnViewModeHolder.setOnClickListener {
-            val items = arrayListOf(
-                RadioItem(1, getString(R.string.cdn_view_mode_first), CdnSettings.VIEW_FIRST),
-                RadioItem(2, getString(R.string.cdn_view_mode_public), CdnSettings.VIEW_PUBLIC),
-            )
-            val checkedItemId = items.first { it.value == bridge.cdnViewMode }.id
-            RadioGroupDialog(this@SettingsActivity, items, checkedItemId) {
-                bridge.cdnViewMode = it as String
-                settingsCdnViewMode.text = getCdnViewModeText(bridge.cdnViewMode)
-            }
-        }
-
         settingsCdnAskCompress.isChecked = bridge.cdnAskCompress
         settingsCdnAskCompressHolder.setOnClickListener {
             settingsCdnAskCompress.toggle()
@@ -271,8 +258,6 @@ class SettingsActivity : SimpleActivity() {
         val available = cdnBaseUrl.isNotEmpty()
         settingsCdnSendMode.isEnabled = available
         settingsCdnSendModeHolder.isEnabled = available
-        settingsCdnViewMode.isEnabled = available
-        settingsCdnViewModeHolder.isEnabled = available
     }
 
     private fun getCdnSendModeText(mode: CdnSendMode) = getString(
@@ -315,13 +300,6 @@ class SettingsActivity : SimpleActivity() {
     private fun updateCdnThresholdText(bridge: BridgeConfig) = binding.apply {
         settingsCdnThreshold.text = getCdnThresholdText(bridge.cdnThresholdMb)
     }
-
-    private fun getCdnViewModeText(mode: String) = getString(
-        when (mode) {
-            CdnSettings.VIEW_PUBLIC -> R.string.cdn_view_mode_public
-            else -> R.string.cdn_view_mode_first
-        }
-    )
 
     override fun onPause() {
         super.onPause()

@@ -93,7 +93,6 @@ internal data class CdnSettings(
     val uploadLimitMb: Int = DEFAULT_UPLOAD_LIMIT_MB,
     val expiryDays: Int = CdnExpiry.DEFAULT_DAYS,
     val askExpiry: Boolean = DEFAULT_ASK_EXPIRY,
-    val view: String = DEFAULT_VIEW,
 ) {
     /** The upload limit in bytes; ciphertext adds [CdnCrypto.OVERHEAD_BYTES]. */
     val uploadLimitBytes: Long
@@ -106,7 +105,6 @@ internal data class CdnSettings(
         thresholdMb = CdnThreshold.coerceMb(thresholdMb),
         uploadLimitMb = coerceUploadLimitMb(uploadLimitMb),
         expiryDays = CdnExpiry.coerceDays(expiryDays),
-        view = coerceView(view),
     )
 
     companion object {
@@ -119,12 +117,6 @@ internal data class CdnSettings(
 
         /** Upload limits offered in the settings and in the send path. */
         val UPLOAD_LIMIT_CHOICES = listOf(10, 25, 50, 100, DEFAULT_UPLOAD_LIMIT_MB)
-
-        const val VIEW_FIRST = "first"
-        const val VIEW_PUBLIC = "public"
-        const val DEFAULT_VIEW = VIEW_FIRST
-
-        fun coerceView(value: String?) = if (value == VIEW_PUBLIC) VIEW_PUBLIC else VIEW_FIRST
 
         val DEFAULTS = CdnSettings()
 

@@ -34,8 +34,6 @@ class BridgeConfig(context: Context) : BaseConfig(context) {
         private const val CDN_UPLOAD_LIMIT_MB = "cdn_upload_limit_mb"
         private const val CDN_EXPIRY_DAYS = "cdn_expiry_days"
         private const val CDN_ASK_EXPIRY = "cdn_ask_expiry"
-
-private const val CDN_VIEW_MODE = "cdn_view_mode"
         private const val CONTROL_ENABLED = "control_enabled"
         private const val CONTROL_TOKEN = "control_token"
         private const val PROVISIONED_AT = "provisioned_at"
@@ -175,11 +173,6 @@ private const val CDN_VIEW_MODE = "cdn_view_mode"
         get() = prefs.getBoolean(CDN_ASK_EXPIRY, CdnSettings.DEFAULT_ASK_EXPIRY)
         set(enabled) = prefs.edit().putBoolean(CDN_ASK_EXPIRY, enabled).apply()
 
-    /** Who may decrypt new file links: the first browser or anyone with the link. */
-    internal var cdnViewMode: String
-        get() = CdnSettings.coerceView(prefs.getString(CDN_VIEW_MODE, null))
-        set(mode) = prefs.edit().putString(CDN_VIEW_MODE, CdnSettings.coerceView(mode)).apply()
-
     /** Snapshot of the file-service settings used by the send path. */
     internal fun cdnSettings(): CdnSettings = CdnSettings(
         mode = cdnSendMode,
@@ -187,7 +180,6 @@ private const val CDN_VIEW_MODE = "cdn_view_mode"
         askCompress = cdnAskCompress,
         uploadLimitMb = cdnUploadLimitMb,
         expiryDays = cdnExpiryDays,
-        view = cdnViewMode,
         askExpiry = cdnAskExpiry,
     ).coerce()
 
