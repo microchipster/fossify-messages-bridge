@@ -15,7 +15,8 @@
 #   2. grant the SMS permissions (and notifications)
 #   3. hold the SMS role, set the legacy secure default app setting and keep
 #      the role holder (Android 10+)
-#   4. optionally run provision-app.sh <serial> <config-file-or-url>
+#   4. stop a local adb agent serving the same phone (avoids double bridging)
+#   5. optionally run provision-app.sh <serial> <config-file-or-url>
 #
 # Environment:
 #   APP_PACKAGE  default: org.fossify.messages.bridge
@@ -37,6 +38,10 @@ Usage: tools/install-app.sh <adb-serial> <apk> [config-file-or-url]
                         defaults (bridge_enabled, control_enabled, long and
                         group MMS on, port 8391, the URL as homeserver and
                         bridge base URL), a JSON file is applied as given
+
+The script also stops a local adb agent (android-sms-mms-adb-agent or the
+sms-agent dev binary) whose configuration serves the same serial, so pairing
+the app cannot leave the phone bridged twice.
 EOF
 }
 
@@ -54,6 +59,37 @@ fi
 
 ADB="${ADB:-adb}"
 PKG="${APP_PACKAGE:-org.fossify.messages.bridge}"
+
+# stop_adb_agents stops local adb agents (android-sms-mms-adb-agent, or the
+# sms-agent dev binary) whose configuration serves <serial>, so switching the
+# phone to app pairing cannot leave it bridged twice. Agents for other phones
+# are left alone.
+stop_adb_agents() {
+	local serial="$1" pid cmd config stopped=0
+	for pid in $(pgrep -f 'android-sms-mms-adb-agent|sms-agent' 2>/dev/null || true); do
+		cmd="$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)"
+		[ -z "$cmd" ] && continue
+		config="$(printf '%s' "$cmd" | sed -n 's/.*-c \([^ ]*\).*/\1/p')"
+		case "$cmd" in
+		*"$serial"*)
+			;;
+		*)
+			if [ -z "$config" ] || [ ! -r "$config" ] || ! grep -q "$serial" "$config" 2>/dev/null; then
+				continue
+			fi
+			;;
+		esac
+		if kill "$pid" 2>/dev/null; then
+			echo "stopped the adb agent (pid $pid) that serves $serial"
+			stopped=1
+		fi
+	done
+	if [ "$stopped" = "0" ]; then
+		echo "no local adb agent serving $serial is running"
+	else
+		echo "note: if the bridge still lists an agent login for this phone, remove it with 'unpair <device_id>' in the management room"
+	fi
+}
 
 "$ADB" -s "$SERIAL" install -r "$APK"
 
@@ -74,6 +110,8 @@ fi
 if ! "$ADB" -s "$SERIAL" shell settings put secure sms_default_application "$PKG" >/dev/null 2>&1; then
 	echo "warning: could not set sms_default_application" >&2
 fi
+
+stop_adb_agents "$SERIAL"
 
 if [ -n "$CONFIG_FILE" ]; then
 	"$SCRIPT_DIR/provision-app.sh" "$SERIAL" "$CONFIG_FILE"
