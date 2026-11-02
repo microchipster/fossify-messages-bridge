@@ -56,9 +56,6 @@
     <string name="cdn_mode_ask">Always ask</string>
     <string name="cdn_mode_link">Encrypted link</string>
     <string name="cdn_mode_never">Never</string>
-    <string name="cdn_view_mode">Link view policy</string>
-    <string name="cdn_view_mode_first">First viewer only</string>
-    <string name="cdn_view_mode_public">Anyone with the link</string>
     <string name="cdn_ask_compress">Ask before compressing large attachments</string>
     <string name="cdn_upload_limit">Maximum upload size</string>
     <string name="cdn_upload_limit_mb">%1$d MB</string>
