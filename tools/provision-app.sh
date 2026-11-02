@@ -8,7 +8,12 @@
 # in docs/bridge-mode.md.
 #
 # Usage:
-#   tools/provision-app.sh <adb-serial> <config-file>
+#   tools/provision-app.sh <adb-serial> <config-file-or-url>
+#
+# The config can be a JSON file (used as given) or an http(s) URL. A URL is
+# expanded to the auto-provisioning defaults: bridge_enabled, control_enabled,
+# long/group MMS on, bridge_port 8391, and the URL as both the homeserver and
+# the bridge base URL.
 #
 # Environment:
 #   CONTROL_TOKEN  optional control token extra. `adb shell` holds
@@ -26,9 +31,23 @@ set -euo pipefail
 
 usage() {
 	cat >&2 <<'EOF'
-Usage: tools/provision-app.sh <adb-serial> <config-file>
+Usage: tools/provision-app.sh <adb-serial> <config-file-or-url>
 
-The config file holds one JSON object with any of:
+The config can be a JSON file or an http(s) URL.
+
+A URL expands to the auto-provisioning defaults:
+  {
+    "bridge_enabled": true,
+    "bridge_port": 8391,
+    "bridge_hs_url": "<url>",
+    "bridge_base_url": "<url>",
+    "control_enabled": true,
+    "send_long_message_mms": true,
+    "send_group_message_mms": true
+  }
+
+A JSON file is applied as given and can override any of the defaults. It holds
+one JSON object with any of:
   bridge_enabled, bridge_port, bridge_device_id, bridge_hs_url,
   bridge_base_url, control_enabled, control_token,
   send_long_message_mms, send_group_message_mms
@@ -47,24 +66,32 @@ EOF
 }
 
 SERIAL="${1:-}"
-CONFIG_FILE="${2:-}"
-if [ -z "$SERIAL" ] || [ -z "$CONFIG_FILE" ]; then
+CONFIG_SOURCE="${2:-}"
+if [ -z "$SERIAL" ] || [ -z "$CONFIG_SOURCE" ]; then
 	usage
 	exit 2
 fi
 
-if [ ! -f "$CONFIG_FILE" ]; then
-	echo "error: config file not found: $CONFIG_FILE" >&2
-	exit 2
-fi
-
-CONFIG="$(cat "$CONFIG_FILE")"
-case "$CONFIG" in
-'{'*'}')
+case "$CONFIG_SOURCE" in
+http://*|https://*)
+	# A URL expands to the auto-provisioning defaults; a JSON file can
+	# override any of them. The URL must be a plain URL without quotes.
+	CONFIG="$(printf '{"bridge_enabled": true, "bridge_port": 8391, "bridge_hs_url": "%s", "bridge_base_url": "%s", "control_enabled": true, "send_long_message_mms": true, "send_group_message_mms": true}' "$CONFIG_SOURCE" "$CONFIG_SOURCE")"
 	;;
 *)
-	echo "error: config file must hold one JSON object: $CONFIG_FILE" >&2
-	exit 2
+	if [ ! -f "$CONFIG_SOURCE" ]; then
+		echo "error: config file not found: $CONFIG_SOURCE" >&2
+		exit 2
+	fi
+	CONFIG="$(cat "$CONFIG_SOURCE")"
+	case "$CONFIG" in
+	'{'*'}')
+		;;
+	*)
+		echo "error: config file must hold one JSON object: $CONFIG_SOURCE" >&2
+		exit 2
+		;;
+	esac
 	;;
 esac
 
