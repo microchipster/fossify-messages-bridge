@@ -15,7 +15,7 @@
 #   2. grant the SMS permissions (and notifications)
 #   3. hold the SMS role, set the legacy secure default app setting and keep
 #      the role holder (Android 10+)
-#   4. optionally run provision-app.sh <serial> <config-file>
+#   4. optionally run provision-app.sh <serial> <config-file-or-url>
 #
 # Environment:
 #   APP_PACKAGE  default: org.fossify.messages.bridge
@@ -28,11 +28,15 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
 	cat >&2 <<'EOF'
-Usage: tools/install-app.sh <adb-serial> <apk> [config-file]
+Usage: tools/install-app.sh <adb-serial> <apk> [config-file-or-url]
 
-  <adb-serial>   target device (adb -s)
-  <apk>          bridge APK to install with `adb install -r`
-  [config-file]  optional JSON config applied with control.PROVISION
+  <adb-serial>          target device (adb -s)
+  <apk>                 bridge APK to install with `adb install -r`
+  [config-file-or-url]  optional config applied with control.PROVISION;
+                        an http(s) URL expands to the auto-provisioning
+                        defaults (bridge_enabled, control_enabled, long and
+                        group MMS on, port 8391, the URL as homeserver and
+                        bridge base URL), a JSON file is applied as given
 EOF
 }
 
