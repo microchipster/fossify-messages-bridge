@@ -230,7 +230,7 @@ internal object CdnMediaRenderer {
             if (file == null) {
                 CdnRenderResult.Failed
             } else {
-                val bytes = CdnClient.download(ref.baseUrl, ref.id, ref.keyFragment, MAX_RENDER_BYTES)
+                val bytes = CdnClient.download(ref.baseUrl, ref.id, ref.keyFragment, MAX_RENDER_BYTES, token = CdnClient.ownerToken(context))
                 kinds.put(ref.id, CdnMediaType.sniff(bytes))
                 CdnMediaCache.write(file, bytes)
                 preview(ref.id, file, previewWidthPx)

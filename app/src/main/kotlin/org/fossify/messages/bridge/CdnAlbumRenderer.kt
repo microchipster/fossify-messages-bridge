@@ -156,7 +156,7 @@ internal object CdnAlbumRenderer {
     private fun fetchManifest(context: Context, ref: CdnLinkRef) {
         val file = CdnMediaCache.albumManifestFile(context, ref.id)
         val result = try {
-            val items = CdnClient.downloadAlbumManifest(ref.baseUrl, ref.id, ref.keyFragment)
+            val items = CdnClient.downloadAlbumManifest(ref.baseUrl, ref.id, ref.keyFragment, token = CdnClient.ownerToken(context))
             if (items == null || file == null) {
                 missingManifests.put(ref.id, true)
                 CdnAlbumResult.Failed
@@ -194,6 +194,7 @@ internal object CdnAlbumRenderer {
                     id = ref.id,
                     index = index,
                     keyFragment = ref.keyFragment,
+                    token = CdnClient.ownerToken(context),
                     maxBytes = CdnMediaRenderer.MAX_RENDER_BYTES,
                 )
                 CdnMediaCache.write(file, bytes)
