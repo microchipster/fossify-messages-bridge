@@ -23,6 +23,7 @@ import org.fossify.messages.extensions.getThreadId
 import org.fossify.messages.extensions.messagingUtils
 import org.fossify.messages.messaging.getSendMessageSettings
 import org.fossify.messages.messaging.isLongMmsMessage
+import org.fossify.messages.messaging.notifyIfMmsWaitingForMobileData
 import org.fossify.messages.receivers.MmsSentReceiver
 
 /** One outgoing MMS attachment of a POST /v1/send request. */
@@ -275,6 +276,7 @@ object BridgeSender {
         val threadId = context.getThreadId(recipients.toSet())
         val markId = maxRowId(context, Mms.CONTENT_URI)
 
+        context.notifyIfMmsWaitingForMobileData()
         val transaction = Transaction(context, settings)
         val message = Message(text, recipients.toTypedArray())
         attachments.forEach { attachment ->

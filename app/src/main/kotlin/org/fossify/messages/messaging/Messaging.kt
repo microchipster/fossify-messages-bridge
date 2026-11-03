@@ -1,7 +1,10 @@
 package org.fossify.messages.messaging
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.telephony.SmsMessage
+import android.util.Log
 import android.util.Patterns
 import android.widget.Toast.LENGTH_LONG
 import com.klinker.android.send_message.Settings
@@ -52,6 +55,7 @@ fun Context.sendMessageCompat(
     val isMms = attachments.isNotEmpty() || isLongMmsMessage(text, settings)
             || addresses.size > 1 && settings.group
     if (isMms) {
+        notifyIfMmsWaitingForMobileData()
         // we send all MMS attachments separately to reduces the chances of hitting provider MMS limit.
         if (attachments.isNotEmpty()) {
             val lastIndex = attachments.lastIndex
@@ -119,4 +123,22 @@ fun isShortCodeWithLetters(address: String): Boolean {
     }
 
     return address.any { it.isLetter() }
+}
+
+/** True when some active network advertises MMS support (normally mobile data). */
+@Suppress("DEPRECATION")
+private fun Context.hasMmsNetworkCapability(): Boolean {
+    val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
+    return connectivityManager.allNetworks.any { network ->
+        connectivityManager.getNetworkCapabilities(network)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_MMS) == true
+    }
+}
+
+/** Warns when an MMS will wait for mobile data instead of going out right away. */
+fun Context.notifyIfMmsWaitingForMobileData() {
+    if (hasMmsNetworkCapability()) {
+        return
+    }
+    Log.i("MmsNetwork", "mms-waiting-for-mobile-data")
+    toast(id = R.string.mms_waiting_for_mobile_data, length = LENGTH_LONG)
 }
