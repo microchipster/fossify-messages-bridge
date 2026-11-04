@@ -112,7 +112,7 @@ class BridgeService : Service() {
         val port = config.bridgePort.coerceIn(MIN_PORT, MAX_PORT)
         // Only the static-token agent mode uses this token; a phone that is
         // merely paired through the QR flow does not need one.
-        val token = if (bridgeEnabled) config.getOrCreateToken() else ""
+        val token = config.getOrCreateToken()
         startAsForeground(port, bridgeEnabled)
         BatteryOptimizations.maybeNotify(this)
 
@@ -204,7 +204,7 @@ class BridgeService : Service() {
             server = newServer
             serverPort = port
             serverToken = token
-            Log.i(TAG, "bridge HTTP API listening on 0.0.0.0:$port")
+            Log.i(TAG, "bridge HTTP API listening on 127.0.0.1:$port")
         } catch (e: Exception) {
             Log.e(TAG, "failed to start bridge HTTP API on port $port", e)
         }

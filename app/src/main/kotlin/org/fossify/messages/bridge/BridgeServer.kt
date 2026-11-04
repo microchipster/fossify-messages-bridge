@@ -18,6 +18,7 @@ import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
 import java.io.EOFException
 import java.io.InputStream
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -75,7 +76,7 @@ class BridgeServer(
         }
         val socket = ServerSocket()
         socket.reuseAddress = true
-        socket.bind(InetSocketAddress(port))
+        socket.bind(InetSocketAddress(InetAddress.getLoopbackAddress(), port))
         serverSocket = socket
         running = true
         Thread({ acceptLoop(socket) }, "BridgeServer-accept").start()
