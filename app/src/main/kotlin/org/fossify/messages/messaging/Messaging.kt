@@ -130,7 +130,8 @@ fun isShortCodeWithLetters(address: String): Boolean {
 private fun Context.hasMmsNetworkCapability(): Boolean {
     val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return true
     return connectivityManager.allNetworks.any { network ->
-        connectivityManager.getNetworkCapabilities(network)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_MMS) == true
+        connectivityManager.getNetworkCapabilities(network)
+            ?.hasCapability(NetworkCapabilities.NET_CAPABILITY_MMS) == true
     }
 }
 

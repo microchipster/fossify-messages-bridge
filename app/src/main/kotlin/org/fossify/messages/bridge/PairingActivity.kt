@@ -120,12 +120,14 @@ class PairingActivity : SimpleActivity() {
             binding.pairingDeviceId.setText(deviceId)
         }
         val payload = intent?.getStringExtra(EXTRA_PAYLOAD) ?: intent?.data?.toString()
-        if (!payload.isNullOrBlank() &&
-            (payload.startsWith("smsmms://") || payload.startsWith("http://") || payload.startsWith("https://"))
-        ) {
+        if (payload != null && isPairingPayload(payload)) {
             binding.pairingPayload.setText(payload)
             usePayload(payload, autoStart = false)
         }
+    }
+
+    private fun isPairingPayload(payload: String): Boolean {
+        return payload.startsWith("smsmms://") || payload.startsWith("http://") || payload.startsWith("https://")
     }
 
     override fun onResume() {
@@ -186,6 +188,14 @@ class PairingActivity : SimpleActivity() {
         startPairing()
     }
 
+    // Pairing against a different homeserver is blocked while the app is already paired.
+    private fun isHomeserverChangeBlocked(storedHomeserverUrl: String?, targetHomeserverUrl: String?): Boolean {
+        if (!store.isPaired || storedHomeserverUrl == null || targetHomeserverUrl == null) {
+            return false
+        }
+        return !storedHomeserverUrl.equals(targetHomeserverUrl, ignoreCase = true)
+    }
+
     private fun startPairing() {
         if (pairingInProgress) {
             return
@@ -209,9 +219,7 @@ class PairingActivity : SimpleActivity() {
 
         val storedHomeserverUrl = PairingHttp.normalizeUrl(store.homeserverUrl)
         val targetHomeserverUrl = PairingHttp.normalizeUrl(homeserverUrl)
-        if (store.isPaired && storedHomeserverUrl != null && targetHomeserverUrl != null &&
-            !storedHomeserverUrl.equals(targetHomeserverUrl, ignoreCase = true)
-        ) {
+        if (isHomeserverChangeBlocked(storedHomeserverUrl, targetHomeserverUrl)) {
             val message = getString(
                 R.string.bridge_pairing_server_change_blocked,
                 storedHomeserverUrl,
