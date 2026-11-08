@@ -1,0 +1,3 @@
+[submodule "mmslib"]
+	path = mmslib
+	url = https://github.com/microchipster/fossify-mmslib-bridge.git
