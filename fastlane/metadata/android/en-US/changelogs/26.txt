@@ -1,4 +1,18 @@
+Added:
+
+• Bridge pairing (QR scan or manual code) and a pairing screen for re-pairing/unpairing
+• Control intents for headless automation via `am broadcast` or Termux
+• iMessage-style tapbacks mapped to Matrix reactions
+• Encrypted attachment uploads (links/CDN albums)
+• Conversation merging and history-retention settings
+
 Changed:
 
-• Updated translations
+• Default-SMS role detection with SMS-role fallback
+• Battery-optimization nudge, service watchdog, reconnect on network changes
+• Local bridge HTTP API binds to loopback and always requires a token
 
+Fixed:
+
+• MMS pending-mobile-data hint
+• Pairing hardening (link confirmation, rate limits, audit) and echo-correlation fixes
