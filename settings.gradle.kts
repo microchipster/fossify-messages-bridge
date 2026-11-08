@@ -11,12 +11,11 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { setUrl("https://www.jitpack.io") }
-        mavenLocal()
     }
 }
 include(":app")
 
-// Local mmslib fork replaces the org.fossify:mmslib JitPack artifact.
+// The mmslib fork is vendored as a git submodule (see mmslib/).
 // Override the checkout location with the MMSLIB_DIR environment variable.
 include(":mmslib")
-project(":mmslib").projectDir = file(System.getenv("MMSLIB_DIR") ?: "../fossify-mmslib/library")
+project(":mmslib").projectDir = file(System.getenv("MMSLIB_DIR") ?: "mmslib/library")
