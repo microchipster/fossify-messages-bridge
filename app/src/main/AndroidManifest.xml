@@ -205,22 +205,6 @@
                     android:host="pair"
                     android:scheme="smsmms" />
             </intent-filter>
-
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data
-                    android:host="matrix.example.net"
-                    android:pathPrefix="/_smsmms/pair"
-                    android:scheme="https" />
-                <data
-                    android:host="matrix.example.com"
-                    android:pathPrefix="/_smsmms/pair"
-                    android:scheme="https" />
-            </intent-filter>
         </activity>
 
         <service
