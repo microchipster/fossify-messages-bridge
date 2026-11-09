@@ -1,5 +1,5 @@
 /*
- * SPDX-FileCopyrightText: 2026 microchipster
+ * SPDX-FileCopyrightText: 2026 The Fossify Messages bridge contributors
  *
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
